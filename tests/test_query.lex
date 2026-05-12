@@ -2,9 +2,10 @@ import "std.str"  as str
 import "std.list" as list
 import "std.int"  as int
 
-import "../vendor/lex-schema/src/schema"     as s
-import "../vendor/lex-schema/src/constraints" as c
-import "../vendor/lex-schema/src/json_value"  as jv
+import "lex-schema/schema"     as s
+import "lex-schema/constraints" as c
+import "lex-schema/json_value"  as jv
+import "lex-schema/error"       as se
 
 import "../src/predicate" as p
 import "../src/query"     as q
@@ -33,144 +34,69 @@ fn blog_post_schema() -> s.ModelSchema {
   }
 }
 
-fn dummy_decode(j :: jv.Json) -> Result[jv.Json, s.Errors] { Ok(j) }
+fn dummy_decode(j :: jv.Json) -> Result[jv.Json, se.Errors] { Ok(j) }
 
-fn suite() -> List[Result[Str, Str]] {
-  [
-    test_select_basic(),
-    test_select_where(),
-    test_select_limit_offset(),
-    test_select_order_by(),
-    test_select_multi_where(),
-    test_table_from_pascal_case(),
-    test_build_insert_param_count(),
-    test_build_update(),
-    test_build_delete_no_where(),
-    test_build_delete_with_where(),
-  ]
-}
+# lex test convention: run_all :: () -> () — assert on failure.
+fn run_all() -> () {
+  # SELECT * FROM "post" (no filters)
+  let repo_post := q.for_schema(post_schema(), dummy_decode)
+  let sel_basic := q.build_select(q.select(repo_post))
+  assert sel_basic.sql == "SELECT * FROM \"post\""
 
-fn run_all() -> Int {
-  list.fold(suite(), 0, fn (acc :: Int, v :: Result[Str, Str]) -> Int {
-    match v {
-      Ok(_)    => acc,
-      Err(msg) => {
-        let _ := msg
-        acc + 1
-      },
-    }
-  })
-}
+  # WHERE adds params
+  let sel_where := q.build_select(
+    q.where_clause(q.select(repo_post), p.eq("id", PInt(1))))
+  assert str.contains(sel_where.sql, "WHERE")
+  assert list.len(sel_where.params) == 1
 
-fn assert_eq_str(label :: Str, got :: Str, want :: Str) -> Result[Str, Str] {
-  if got == want { Ok(label) }
-  else {
-    Err(str.concat(label, str.concat(" FAIL\ngot:  ",
-      str.concat(got, str.concat("\nwant: ", want)))))
-  }
-}
+  # LIMIT + OFFSET appear in SQL
+  let sel_lim := q.build_select(
+    q.offset(q.limit(q.select(repo_post), 10), 20))
+  assert str.contains(sel_lim.sql, "LIMIT 10")
+  assert str.contains(sel_lim.sql, "OFFSET 20")
 
-fn assert_eq_int(label :: Str, got :: Int, want :: Int) -> Result[Str, Str] {
-  if got == want { Ok(label) }
-  else {
-    Err(str.concat(label, str.concat(" FAIL: got=",
-      str.concat(int.to_str(got), str.concat(" want=", int.to_str(want))))))
-  }
-}
+  # ORDER BY
+  let sel_ord := q.build_select(
+    q.order_by(q.select(repo_post), "title", Asc))
+  assert str.contains(sel_ord.sql, "ORDER BY \"title\" ASC")
 
-fn assert_contains(label :: Str, haystack :: Str, needle :: Str) -> Result[Str, Str] {
-  if str.contains(haystack, needle) { Ok(label) }
-  else {
-    Err(str.concat(label, str.concat(" FAIL: ",
-      str.concat(needle, str.concat(" not found in: ", haystack)))))
-  }
-}
-
-fn test_select_basic() -> Result[Str, Str] {
-  let repo := q.for_schema(post_schema(), dummy_decode)
-  let built := q.build_select(q.select(repo))
-  assert_eq_str("select_basic", built.sql, "SELECT * FROM \"post\"")
-}
-
-fn test_select_where() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query := q.where_clause(q.select(repo), p.eq("id", PInt(1)))
-  let built := q.build_select(query)
-  match assert_contains("select_where_sql", built.sql, "WHERE") {
-    Err(e) => Err(e),
-    Ok(_)  => assert_eq_int("select_where_params", list.len(built.params), 1),
-  }
-}
-
-fn test_select_limit_offset() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query := q.offset(q.limit(q.select(repo), 10), 20)
-  let built := q.build_select(query)
-  match assert_contains("limit_in_sql", built.sql, "LIMIT 10") {
-    Err(e) => Err(e),
-    Ok(_)  => assert_contains("offset_in_sql", built.sql, "OFFSET 20"),
-  }
-}
-
-fn test_select_order_by() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query := q.order_by(q.select(repo), "title", Asc)
-  let built := q.build_select(query)
-  assert_contains("order_by", built.sql, "ORDER BY \"title\" ASC")
-}
-
-fn test_select_multi_where() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query :=
+  # Multiple WHERE clauses AND together
+  let sel_multi := q.build_select(
     q.where_clause(
-      q.where_clause(q.select(repo), p.eq("id", PInt(5))),
-      p.eq("slug", PStr("hello")))
-  let built := q.build_select(query)
-  match assert_contains("multi_where_and", built.sql, "AND") {
-    Err(e) => Err(e),
-    Ok(_)  => assert_eq_int("multi_where_params", list.len(built.params), 2),
-  }
-}
+      q.where_clause(q.select(repo_post), p.eq("id", PInt(5))),
+      p.eq("slug", PStr("hello"))))
+  assert str.contains(sel_multi.sql, "AND")
+  assert list.len(sel_multi.params) == 2
 
-fn test_table_from_pascal_case() -> Result[Str, Str] {
-  let repo := q.for_schema(blog_post_schema(), dummy_decode)
-  assert_eq_str("pascal_to_snake", repo.table, "blog_post")
-}
+  # PascalCase title => snake_case table name
+  let repo_bp := q.for_schema(blog_post_schema(), dummy_decode)
+  assert repo_bp.table == "blog_post"
 
-fn test_build_insert_param_count() -> Result[Str, Str] {
-  let repo := q.for_schema(post_schema(), dummy_decode)
-  let val  := JObj([
+  # INSERT param count == number of schema fields
+  let val := JObj([
     ("id",    JInt(1)),
     ("title", JStr("Hello")),
     ("body",  JStr("World")),
   ])
-  let built := q.build_insert(q.insert(repo, val))
-  # post_schema has 4 fields, so 4 params
-  assert_eq_int("insert_param_count", list.len(built.params), 4)
-}
+  let ins := q.build_insert(q.insert(repo_post, val))
+  assert list.len(ins.params) == 4
 
-fn test_build_update() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query :=
+  # UPDATE has SET and WHERE
+  let upd := q.build_update(
     q.where_update(
-      q.set_col(q.update(repo), "title", PStr("New Title")),
-      p.eq("id", PInt(7)))
-  let built := q.build_update(query)
-  match assert_contains("update_set", built.sql, "SET") {
-    Err(e) => Err(e),
-    Ok(_)  => assert_contains("update_where", built.sql, "WHERE"),
-  }
-}
+      q.set_col(q.update(repo_post), "title", PStr("New")),
+      p.eq("id", PInt(7))))
+  assert str.contains(upd.sql, "SET")
+  assert str.contains(upd.sql, "WHERE")
 
-fn test_build_delete_no_where() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let built := q.build_delete(q.delete_from(repo))
-  assert_eq_str("delete_no_where", built.sql, "DELETE FROM \"post\"")
-}
+  # DELETE without WHERE
+  let del_plain := q.build_delete(q.delete_from(repo_post))
+  assert del_plain.sql == "DELETE FROM \"post\""
 
-fn test_build_delete_with_where() -> Result[Str, Str] {
-  let repo  := q.for_schema(post_schema(), dummy_decode)
-  let query := q.where_delete(q.delete_from(repo), p.eq("id", PInt(3)))
-  let built := q.build_delete(query)
-  assert_contains("delete_with_where", built.sql, "WHERE")
+  # DELETE with WHERE
+  let del_where := q.build_delete(
+    q.where_delete(q.delete_from(repo_post), p.eq("id", PInt(3))))
+  assert str.contains(del_where.sql, "WHERE")
+
+  ()
 }

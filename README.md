@@ -2,25 +2,26 @@
 
 A typed query builder and migration runner for [lex-lang](https://github.com/alpibrusl/lex-lang), built on top of [lex-schema](https://github.com/alpibrusl/lex-schema).
 
-Implements [lex-lang#357](https://github.com/alpibrusl/lex-lang/issues/357).
+Implements [lex-lang#357](https://github.com/alpibrusl/lex-lang/issues/357). Requires **lex 0.9+**.
 
 ## What it does
 
-- **Pure SQL builder** — `build_select`, `build_insert`, `build_update`, `build_delete` return a `SqlQuery = { sql, params }` value with no effects. Fully testable today without a database.
+- **Pure SQL builder** — `build_select`, `build_insert`, `build_update`, `build_delete` return a `SqlQuery = { sql, params }` value with no effects. Fully testable without a database.
 - **Predicate DSL** — composable `PEq / PNeq / PIn / PIsNull / PAnd / POr / PNot` predicates with `?` placeholder params.
 - **Schema-driven DDL diffing** — `diff(old, new)` detects added/dropped columns and nullability changes; `to_alter_table` emits `ALTER TABLE` SQL for Postgres and SQLite.
-- **Migration planner** — `plan_migrations(current_version, versions)` returns pending `SchemaVersion` entries sorted ascending.
-- **Runtime stubs** — `run_select / run_insert / run_update / run_delete / transaction` carry the `[sql]` effect annotation and return `Err(DbQueryFailed(...))` until `std.sql` lands in lex 0.9+.
+- **Migration planner** — `plan_migrations(current_version, versions)` returns pending `SchemaVersion` entries sorted ascending (uses `list.sort_by` from lex 0.9).
+- **Runtime stubs** — `run_select / run_insert / run_update / run_delete / transaction` return `Err(DbQueryFailed(...))` until `std.sql` lands in a future release.
 
 ## Repository layout
 
 ```
+lex.toml           package manifest (lex 0.9+)
 src/
-  error.lex       DbErr ADT + message/0
-  connection.lex  Dialect (DbPostgres | DbSqlite), Db, Tx, connect_*/close
-  predicate.lex   Param, Predicate ADT, render_where/render_pred
-  query.lex       Repo[T], query builders, build_*, run_* stubs
-  migrate.lex     DdlChange, diff, to_alter_table, plan_migrations
+  error.lex        DbErr ADT + message/0
+  connection.lex   Dialect (DbPostgres | DbSqlite), Db, Tx, connect_*/close
+  predicate.lex    Param, Predicate ADT, render_where/render_pred
+  query.lex        Repo[T], query builders, build_*, run_* stubs
+  migrate.lex      DdlChange, diff, to_alter_table, plan_migrations
 
 tests/
   test_predicate.lex
@@ -31,34 +32,42 @@ examples/
   01_blog_posts.lex   SELECT / INSERT / UPDATE / DELETE query plans
   02_migrations.lex   Schema diffing and ALTER TABLE generation
 
-vendor/
-  lex-schema/src/   Vendored copy of lex-schema (no package manager yet)
+vendor/             kept for lex <0.9 compatibility; ignored when lex.toml resolves deps
 ```
 
-## Installation (vendoring)
+## Installation
 
-Since lex has no package manager yet, vendor lex-schema alongside your project:
+Add lex-orm and lex-schema as dependencies in your project's `lex.toml`:
 
-```sh
-mkdir -p vendor/lex-schema/src
-cp path/to/lex-schema/src/*.lex vendor/lex-schema/src/
+```toml
+[dependencies]
+lex-orm    = { path = "../lex-orm" }
+lex-schema = { path = "../lex-schema" }
 ```
 
-Then import lex-orm modules with relative paths:
+Or via git:
 
+```toml
+[dependencies]
+lex-orm    = { git = "https://github.com/alpibrusl/lex-orm" }
+lex-schema = { git = "https://github.com/alpibrusl/lex-schema" }
 ```
-import "./src/query"     as q
-import "./src/predicate" as p
+
+Then import by package name:
+
+```lex
+import "lex-orm/query"     as q
+import "lex-orm/predicate" as p
 ```
 
 ## Usage
 
 ### Query builder
 
-```
-import "./src/query"     as q
-import "./src/predicate" as p
-import "./vendor/lex-schema/src/schema" as s
+```lex
+import "lex-orm/query"     as q
+import "lex-orm/predicate" as p
+import "lex-schema/schema" as s
 
 let repo := q.for_schema(my_schema, my_decode_fn)
 
@@ -70,15 +79,15 @@ let plan :=
       50
     )
   )
-# plan.sql   => SELECT * FROM "my_table" WHERE "status" = ? LIMIT 50
+# plan.sql    => SELECT * FROM "my_table" WHERE "status" = ? LIMIT 50
 # plan.params => [PStr("active")]
 ```
 
 ### Migrations
 
-```
-import "./src/migrate"    as m
-import "./src/connection" as conn
+```lex
+import "lex-orm/migrate"    as m
+import "lex-orm/connection" as conn
 
 let changes := m.diff(schema_v1, schema_v2)
 let sql     := m.to_alter_table("posts", changes, DbPostgres)
@@ -90,17 +99,16 @@ let pending := m.plan_migrations(current_version, all_versions)
 
 ### Dialect variants
 
-lex-orm uses `DbPostgres | DbSqlite` (not `DialectPostgres | DialectSqlite`) to avoid constructor collision with lex-schema's `sdk.SqlDialect` type. If you import both packages, be aware of this distinction.
+lex-orm uses `DbPostgres | DbSqlite` (not `DialectPostgres | DialectSqlite`) to avoid constructor collision with lex-schema's `sdk.SqlDialect` type.
 
 ## Running tests
 
 ```sh
-lex run tests/test_predicate.lex
-lex run tests/test_query.lex
-lex run tests/test_migrate.lex
+lex test                   # runs all tests/test_*.lex via lex 0.9 runner
+lex test tests/test_predicate.lex  # single file
 ```
 
-All three test files export `run_all() -> Int` which returns the number of failures (0 = all pass).
+All three test files export `run_all() -> ()` and use `assert` per the lex 0.9 test convention.
 
 ## Running examples
 
@@ -111,7 +119,8 @@ lex run examples/02_migrations.lex
 
 ## Design notes
 
-- **Pure/effectful split**: all SQL *building* is pure; all SQL *execution* (`run_*`) carries `[sql]`. This lets you write and test query logic before `std.sql` ships.
-- **Generics**: `Repo[T]` is parameterised; the caller supplies a `decode :: (Json) -> Result[T, Errors]` function. lex-orm only serialises (via schema fields), never deserialises to a concrete type.
-- **`?` placeholders**: used uniformly for both Postgres (`$1, $2, ...`) and SQLite (`?`). A thin adapter layer in the runtime driver will rewrite them once `std.sql` lands.
-- **Tuple destructuring**: lex-lang doesn't support `let (a, b) := tuple`; all pair unpacking uses `match pair { (a, b) => ... }`.
+- **Pure/effectful split**: all SQL *building* is pure; all SQL *execution* (`run_*`) is a stub returning `Err`. Write and test query logic today; plug in `std.sql` when it ships.
+- **Generics**: `Repo[T]` is parameterised; the caller supplies `decode :: (Json) -> Result[T, Errors]`. lex-orm only serialises (via schema fields), never deserialises to a concrete type.
+- **`?` placeholders**: uniform for both Postgres and SQLite. A thin adapter in the future runtime driver will rewrite them to `$1, $2, ...` for Postgres.
+- **`list.sort_by`**: `plan_migrations` uses the key-extractor form added in lex 0.9 (issue #338).
+- **Tuple destructuring**: lex-lang does not support `let (a, b) := tuple`; all pair unpacking uses `match pair { (a, b) => ... }`.

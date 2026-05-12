@@ -3,10 +3,11 @@
 
 import "std.str"  as str
 import "std.list" as list
+import "std.int"  as int
 
-import "../vendor/lex-schema/src/schema"     as s
-import "../vendor/lex-schema/src/constraints" as c
-import "../vendor/lex-schema/src/sdk"        as sdk
+import "lex-schema/schema"     as s
+import "lex-schema/constraints" as c
+import "lex-schema/sdk"        as sdk
 
 import "../src/migrate"    as m
 import "../src/connection" as conn
@@ -27,9 +28,9 @@ fn v2() -> s.ModelSchema {
     title: "Post",
     description: "Blog post v2",
     fields: [
-      s.required_int("id",         [c.IntPositive]),
-      s.required_str("title",      [c.StrMaxLen(200)]),
-      s.required_str("body",       []),
+      s.required_int("id",    [c.IntPositive]),
+      s.required_str("title", [c.StrMaxLen(200)]),
+      s.required_str("body",  []),
       s.optional(s.required_str("slug", [c.StrMaxLen(300)])),
     ],
   }
@@ -38,12 +39,12 @@ fn v2() -> s.ModelSchema {
 fn v3() -> s.ModelSchema {
   {
     title: "Post",
-    description: "Blog post v3 — slug required",
+    description: "Blog post v3 - slug required",
     fields: [
-      s.required_int("id",         [c.IntPositive]),
-      s.required_str("title",      [c.StrMaxLen(200)]),
-      s.required_str("body",       []),
-      s.required_str("slug",       [c.StrMaxLen(300)]),
+      s.required_int("id",    [c.IntPositive]),
+      s.required_str("title", [c.StrMaxLen(200)]),
+      s.required_str("body",  []),
+      s.required_str("slug",  [c.StrMaxLen(300)]),
     ],
   }
 }
@@ -63,7 +64,7 @@ fn main() -> Str {
   ]
   let pending := m.plan_migrations(1, versions)
 
-  let create_pg := sdk.to_sql_ddl(v3(), DialectPostgres)
+  let create_pg    := sdk.to_sql_ddl(v3(), DialectPostgres)
   let migrations_ddl := m.migrations_table_ddl(DbPostgres)
 
   str.join([
@@ -77,7 +78,7 @@ fn main() -> Str {
     alter_2_to_3,
     "",
     str.concat("=== pending migrations from v1: ",
-      str.from_int(list.len(pending))),
+      int.to_str(list.len(pending))),
     "",
     "=== CREATE TABLE v3 (Postgres) ===",
     create_pg,
