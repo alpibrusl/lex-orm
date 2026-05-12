@@ -187,23 +187,55 @@ fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
-# ---- Runtime stubs ------------------------------------------------
-# std.sql is not yet in lex 0.9. These stubs return Err so callers can
-# wire up the interface now and get real execution once std.sql lands.
+# ---- Dialect-aware placeholder numbering --------------------------
+# build_* always emits ? markers. Call for_dialect before execution
+# to get the correct style: ? for SQLite, $1/$2/... for Postgres.
 
-fn run_select[T](q :: SelectQuery[T], _db :: conn.Db) -> Result[List[T], dbe.DbErr] {
+fn for_dialect(q :: SqlQuery, dialect :: conn.Dialect) -> SqlQuery {
+  match dialect {
+    DbSqlite   => q,
+    DbPostgres => { sql: number_placeholders(q.sql), params: q.params },
+  }
+}
+
+fn number_placeholders(sql :: Str) -> Str {
+  let parts := str.split(sql, "?")
+  if list.len(parts) <= 1 { sql }
+  else {
+    let first := match list.head(parts) { None => "", Some(s) => s }
+    let rest  := list.tail(parts)
+    let result := list.fold(rest, (first, 1),
+      fn (acc :: (Str, Int), part :: Str) -> (Str, Int) {
+        let s := match acc { (s2, _) => s2 }
+        let i := match acc { (_, i2) => i2 }
+        (str.concat(s, str.concat(str.concat("$", int.to_str(i)), part)), i + 1)
+      })
+    match result { (s, _) => s }
+  }
+}
+
+# ---- Runtime stubs ------------------------------------------------
+# std.sql is not yet in lex 0.9. These stubs return Err so callers
+# can wire up the interface now and get real execution once std.sql
+# lands. for_dialect is called here so the stubs are already correct.
+
+fn run_select[T](q :: SelectQuery[T], db :: conn.Db) -> Result[List[T], dbe.DbErr] {
+  let _sq := for_dialect(build_select(q), db.dialect)
   Err(DbQueryFailed("std.sql not yet available; use build_select to inspect the SQL plan"))
 }
 
-fn run_insert[T](q :: InsertQuery[T], _db :: conn.Db) -> Result[T, dbe.DbErr] {
+fn run_insert[T](q :: InsertQuery[T], db :: conn.Db) -> Result[T, dbe.DbErr] {
+  let _sq := for_dialect(build_insert(q), db.dialect)
   Err(DbQueryFailed("std.sql not yet available; use build_insert to inspect the SQL plan"))
 }
 
-fn run_update[T](q :: UpdateQuery[T], _db :: conn.Db) -> Result[Int, dbe.DbErr] {
+fn run_update[T](q :: UpdateQuery[T], db :: conn.Db) -> Result[Int, dbe.DbErr] {
+  let _sq := for_dialect(build_update(q), db.dialect)
   Err(DbQueryFailed("std.sql not yet available; use build_update to inspect the SQL plan"))
 }
 
-fn run_delete[T](q :: DeleteQuery[T], _db :: conn.Db) -> Result[Int, dbe.DbErr] {
+fn run_delete[T](q :: DeleteQuery[T], db :: conn.Db) -> Result[Int, dbe.DbErr] {
+  let _sq := for_dialect(build_delete(q), db.dialect)
   Err(DbQueryFailed("std.sql not yet available; use build_delete to inspect the SQL plan"))
 }
 

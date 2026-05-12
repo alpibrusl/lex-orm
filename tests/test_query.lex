@@ -2,13 +2,14 @@ import "std.str"  as str
 import "std.list" as list
 import "std.int"  as int
 
-import "lex-schema/schema"     as s
+import "lex-schema/schema"      as s
 import "lex-schema/constraints" as c
 import "lex-schema/json_value"  as jv
 import "lex-schema/error"       as se
 
-import "../src/predicate" as p
-import "../src/query"     as q
+import "../src/predicate"  as p
+import "../src/query"      as q
+import "../src/connection" as conn
 
 fn post_schema() -> s.ModelSchema {
   {
@@ -97,6 +98,24 @@ fn run_all() -> () {
   let del_where := q.build_delete(
     q.where_delete(q.delete_from(repo_post), p.eq("id", PInt(3))))
   assert str.contains(del_where.sql, "WHERE")
+
+  # for_dialect: SQLite leaves ? unchanged
+  let sq_one := { sql: "SELECT * FROM \"post\" WHERE \"id\" = ?", params: [PInt(1)] }
+  let sq_lite := q.for_dialect(sq_one, DbSqlite)
+  assert sq_lite.sql == "SELECT * FROM \"post\" WHERE \"id\" = ?"
+
+  # for_dialect: Postgres replaces ? with $1, $2, $3
+  let sq_multi2 := {
+    sql: "UPDATE \"t\" SET \"a\" = ?, \"b\" = ? WHERE \"id\" = ?",
+    params: [PStr("x"), PInt(2), PInt(3)]
+  }
+  let sq_pg := q.for_dialect(sq_multi2, DbPostgres)
+  assert sq_pg.sql == "UPDATE \"t\" SET \"a\" = $1, \"b\" = $2 WHERE \"id\" = $3"
+
+  # for_dialect on a query with no params is a no-op for both dialects
+  let sq_bare := { sql: "SELECT * FROM \"post\"", params: [] }
+  let sq_bare_pg := q.for_dialect(sq_bare, DbPostgres)
+  assert sq_bare_pg.sql == "SELECT * FROM \"post\""
 
   ()
 }
