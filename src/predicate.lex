@@ -19,23 +19,31 @@ type Predicate =
   | PIn(Str, List[Param])
   | PIsNull(Str)
   | PIsNotNull(Str)
+  | PLike(Str, Str)
+  | PILike(Str, Str)
+  | PBetween(Str, Param, Param)
+  | PRaw(Str, List[Param])
   | PAnd(Predicate, Predicate)
   | POr(Predicate, Predicate)
   | PNot(Predicate)
 
 # Smart constructors
-fn eq(col :: Str, v :: Param)         -> Predicate { PEq(col, v) }
-fn neq(col :: Str, v :: Param)        -> Predicate { PNeq(col, v) }
-fn gt(col :: Str, v :: Param)         -> Predicate { PGt(col, v) }
-fn gte(col :: Str, v :: Param)        -> Predicate { PGte(col, v) }
-fn lt(col :: Str, v :: Param)         -> Predicate { PLt(col, v) }
-fn lte(col :: Str, v :: Param)        -> Predicate { PLte(col, v) }
-fn in_list(col :: Str, vs :: List[Param]) -> Predicate { PIn(col, vs) }
-fn is_null(col :: Str)                -> Predicate { PIsNull(col) }
-fn is_not_null(col :: Str)            -> Predicate { PIsNotNull(col) }
+fn eq(col :: Str, v :: Param)              -> Predicate { PEq(col, v) }
+fn neq(col :: Str, v :: Param)             -> Predicate { PNeq(col, v) }
+fn gt(col :: Str, v :: Param)              -> Predicate { PGt(col, v) }
+fn gte(col :: Str, v :: Param)             -> Predicate { PGte(col, v) }
+fn lt(col :: Str, v :: Param)              -> Predicate { PLt(col, v) }
+fn lte(col :: Str, v :: Param)             -> Predicate { PLte(col, v) }
+fn in_list(col :: Str, vs :: List[Param])  -> Predicate { PIn(col, vs) }
+fn is_null(col :: Str)                     -> Predicate { PIsNull(col) }
+fn is_not_null(col :: Str)                 -> Predicate { PIsNotNull(col) }
+fn like(col :: Str, pattern :: Str)        -> Predicate { PLike(col, pattern) }
+fn ilike(col :: Str, pattern :: Str)       -> Predicate { PILike(col, pattern) }
+fn between(col :: Str, lo :: Param, hi :: Param) -> Predicate { PBetween(col, lo, hi) }
+fn raw_pred(sql :: Str, params :: List[Param])   -> Predicate { PRaw(sql, params) }
 fn and_pred(a :: Predicate, b :: Predicate) -> Predicate { PAnd(a, b) }
 fn or_pred(a :: Predicate, b :: Predicate)  -> Predicate { POr(a, b) }
-fn not_pred(p :: Predicate)           -> Predicate { PNot(p) }
+fn not_pred(p :: Predicate)                -> Predicate { PNot(p) }
 
 # Render a list of predicates ANDed together.
 # Returns (sql_fragment, params_list). Empty list => ("", []).
@@ -87,6 +95,11 @@ fn render_pred(p :: Predicate) -> (Str, List[Param]) {
     },
     PIsNull(col)      => (str.concat(sql_quote(col), " IS NULL"),     []),
     PIsNotNull(col)   => (str.concat(sql_quote(col), " IS NOT NULL"), []),
+    PLike(col, pat)   => (str.concat(sql_quote(col), " LIKE ?"),  [PStr(pat)]),
+    PILike(col, pat)  => (str.concat(sql_quote(col), " ILIKE ?"), [PStr(pat)]),
+    PBetween(col, lo, hi) =>
+      (str.concat(sql_quote(col), " BETWEEN ? AND ?"), [lo, hi]),
+    PRaw(sql, ps)     => (sql, ps),
     PAnd(a, b) => {
       let ra := render_pred(a)
       let rb := render_pred(b)
@@ -106,8 +119,8 @@ fn render_pred(p :: Predicate) -> (Str, List[Param]) {
       (str.concat("(", str.concat(sa, str.concat(" OR ", str.concat(sb, ")")))), list.concat(pa, pb))
     },
     PNot(inner) => {
-      let r := render_pred(inner)
-      let s := match r { (s2, _) => s2 }
+      let r  := render_pred(inner)
+      let s  := match r { (s2, _) => s2 }
       let ps := match r { (_, ps2) => ps2 }
       (str.concat("NOT (", str.concat(s, ")")), ps)
     },
@@ -122,7 +135,7 @@ fn param_to_str(p :: Param) -> Str {
   match p {
     PStr(s)   => str.concat("'", str.concat(s, "'")),
     PInt(n)   => int.to_str(n),
-    PFloat(x) => "<float>",
+    PFloat(_) => "<float>",
     PBool(b)  => if b { "true" } else { "false" },
     PNull     => "NULL",
   }

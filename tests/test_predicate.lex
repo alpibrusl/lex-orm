@@ -70,5 +70,42 @@ fn run_all() -> () {
   assert s_list == "\"x\" = ? AND \"y\" = ? AND \"z\" = ?"
   assert list.len(p_list) == 3
 
+  # PLike emits col LIKE ? with PStr param
+  let r_like := p.render_pred(p.like("name", "%alice%"))
+  let s_like := match r_like { (sql, _) => sql }
+  let p_like := match r_like { (_, ps) => ps }
+  assert s_like == "\"name\" LIKE ?"
+  assert list.len(p_like) == 1
+
+  # PILike emits col ILIKE ?
+  let r_ilike := p.render_pred(p.ilike("email", "%@example.com"))
+  let s_ilike := match r_ilike { (sql, _) => sql }
+  assert s_ilike == "\"email\" ILIKE ?"
+
+  # PBetween emits col BETWEEN ? AND ? with two params
+  let r_bet := p.render_pred(p.between("age", PInt(18), PInt(65)))
+  let s_bet := match r_bet { (sql, _) => sql }
+  let p_bet := match r_bet { (_, ps) => ps }
+  assert s_bet == "\"age\" BETWEEN ? AND ?"
+  assert list.len(p_bet) == 2
+
+  # PRaw passes SQL and params through unchanged
+  let r_raw := p.render_pred(p.raw_pred("ST_DWithin(location, ST_Point(?, ?), ?)", [PFloat(1.0), PFloat(2.0), PInt(500)]))
+  let s_raw := match r_raw { (sql, _) => sql }
+  let p_raw := match r_raw { (_, ps) => ps }
+  assert s_raw == "ST_DWithin(location, ST_Point(?, ?), ?)"
+  assert list.len(p_raw) == 3
+
+  # PBetween inside render_where integrates cleanly
+  let r_combo := p.render_where([
+    p.eq("active", PBool(true)),
+    p.between("score", PInt(10), PInt(100)),
+  ])
+  let s_combo := match r_combo { (sql, _) => sql }
+  let p_combo := match r_combo { (_, ps) => ps }
+  assert str.contains(s_combo, "BETWEEN")
+  assert str.contains(s_combo, "AND")
+  assert list.len(p_combo) == 3
+
   ()
 }
