@@ -2,15 +2,14 @@ import "std.str"  as str
 import "std.list" as list
 import "std.int"  as int
 
-import "../vendor/lex-schema/src/schema"     as s
-import "../vendor/lex-schema/src/json_value" as jv
-import "../vendor/lex-schema/src/error"      as se
+import "lex-schema/schema"     as s
+import "lex-schema/json_value" as jv
+import "lex-schema/error"      as se
 
 import "./predicate"  as p
 import "./connection" as conn
 import "./error"      as dbe
 
-# Repository descriptor — ties a schema to a table name and a decoder.
 type Repo[T] = {
   schema :: s.ModelSchema,
   table  :: Str,
@@ -28,7 +27,6 @@ fn with_table[T](repo :: Repo[T], table :: Str) -> Repo[T] {
   { schema: repo.schema, table: table, decode: repo.decode }
 }
 
-# Query types
 type Order = Asc | Desc
 
 type SelectQuery[T] = {
@@ -189,30 +187,30 @@ fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
-# ---- Runtime stubs ([sql] effect) ---------------------------------
-# std.sql has not landed yet; these stubs let callers wire up the
-# interface today and get real execution once the runtime ships.
+# ---- Runtime stubs ------------------------------------------------
+# std.sql is not yet in lex 0.9. These stubs return Err so callers can
+# wire up the interface now and get real execution once std.sql lands.
 
-fn run_select[T](q :: SelectQuery[T], _db :: conn.Db) -> [sql] Result[List[T], dbe.DbErr] {
+fn run_select[T](q :: SelectQuery[T], _db :: conn.Db) -> Result[List[T], dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available; use build_select to inspect the SQL plan"))
 }
 
-fn run_insert[T](q :: InsertQuery[T], _db :: conn.Db) -> [sql] Result[T, dbe.DbErr] {
+fn run_insert[T](q :: InsertQuery[T], _db :: conn.Db) -> Result[T, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available; use build_insert to inspect the SQL plan"))
 }
 
-fn run_update[T](q :: UpdateQuery[T], _db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
+fn run_update[T](q :: UpdateQuery[T], _db :: conn.Db) -> Result[Int, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available; use build_update to inspect the SQL plan"))
 }
 
-fn run_delete[T](q :: DeleteQuery[T], _db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
+fn run_delete[T](q :: DeleteQuery[T], _db :: conn.Db) -> Result[Int, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available; use build_delete to inspect the SQL plan"))
 }
 
 fn transaction[A](
   _db   :: conn.Db,
-  _body :: (conn.Tx) -> [sql] Result[A, dbe.DbErr]
-) -> [sql] Result[A, dbe.DbErr] {
+  _body :: (conn.Tx) -> Result[A, dbe.DbErr]
+) -> Result[A, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available"))
 }
 

@@ -2,11 +2,10 @@ import "std.str"  as str
 import "std.int"  as int
 import "std.list" as list
 
-import "../vendor/lex-schema/src/schema" as s
+import "lex-schema/schema" as s
 import "./error"      as dbe
 import "./connection" as conn
 
-# DDL-level changes inferred by diffing two ModelSchemas.
 type DdlChange =
     AddColumn(s.Field)
   | DropColumn(Str)
@@ -19,21 +18,21 @@ type SchemaVersion = {
   schema  :: s.ModelSchema,
 }
 
-# Diff two schemas: detect added, dropped, and nullability-changed columns.
+# Diff two ModelSchemas: detect added, dropped, and nullability-changed columns.
 fn diff(old :: s.ModelSchema, new :: s.ModelSchema) -> List[DdlChange] {
-  let added := list.fold(new.schema.fields, [],
+  let added := list.fold(new.fields, [],
     fn (acc :: List[DdlChange], nf :: s.Field) -> List[DdlChange] {
-      if field_present(old.schema.fields, nf.name) { acc }
+      if field_present(old.fields, nf.name) { acc }
       else { list.concat(acc, [AddColumn(nf)]) }
     })
-  let dropped := list.fold(old.schema.fields, [],
+  let dropped := list.fold(old.fields, [],
     fn (acc :: List[DdlChange], of :: s.Field) -> List[DdlChange] {
-      if field_present(new.schema.fields, of.name) { acc }
+      if field_present(new.fields, of.name) { acc }
       else { list.concat(acc, [DropColumn(of.name)]) }
     })
-  let nullability := list.fold(new.schema.fields, [],
+  let nullability := list.fold(new.fields, [],
     fn (acc :: List[DdlChange], nf :: s.Field) -> List[DdlChange] {
-      match find_field(old.schema.fields, nf.name) {
+      match find_field(old.fields, nf.name) {
         None     => acc,
         Some(of) =>
           if of.required == nf.required { acc }
@@ -63,9 +62,9 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
   let qt := sql_quote(table)
   match ch {
     AddColumn(f) => {
-      let col  := sql_quote(f.name)
-      let ty   := field_base_type(f.kind, dialect)
-      let nn   := if f.required { " NOT NULL" } else { "" }
+      let col := sql_quote(f.name)
+      let ty  := field_base_type(f.kind, dialect)
+      let nn  := if f.required { " NOT NULL" } else { "" }
       str.concat("ALTER TABLE ", str.concat(qt,
         str.concat(" ADD COLUMN ", str.concat(col,
           str.concat(" ", str.concat(ty, nn))))))
@@ -76,17 +75,10 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
     RenameColumn(r) => {
       let from_q := sql_quote(r.from)
       let to_q   := sql_quote(r.to)
-      match dialect {
-        DbPostgres =>
-          str.concat("ALTER TABLE ", str.concat(qt,
-            str.concat(" RENAME COLUMN ", str.concat(from_q,
-              str.concat(" TO ", to_q))))),
-        DbSqlite =>
-          # SQLite supports RENAME COLUMN since 3.25.0 (2018-09)
-          str.concat("ALTER TABLE ", str.concat(qt,
-            str.concat(" RENAME COLUMN ", str.concat(from_q,
-              str.concat(" TO ", to_q))))),
-      }
+      # Both Postgres and SQLite >=3.25 support RENAME COLUMN
+      str.concat("ALTER TABLE ", str.concat(qt,
+        str.concat(" RENAME COLUMN ", str.concat(from_q,
+          str.concat(" TO ", to_q)))))
     },
     SetNullable(name) => {
       match dialect {
@@ -95,7 +87,6 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
             str.concat(" ALTER COLUMN ", str.concat(sql_quote(name),
               " DROP NOT NULL")))),
         DbSqlite =>
-          # SQLite cannot drop NOT NULL via ALTER TABLE; needs table rebuild
           str.concat("-- SQLite: rebuild table to drop NOT NULL on ", name),
       }
     },
@@ -112,7 +103,8 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
   }
 }
 
-# Return only versions with version > current_version, sorted ascending.
+# Return versions with version > current_version, sorted ascending.
+# Uses list.sort_by (landed in lex 0.9, issue #338).
 fn plan_migrations(
   current_version :: Int,
   versions        :: List[SchemaVersion]
@@ -121,9 +113,7 @@ fn plan_migrations(
     fn (acc :: List[SchemaVersion], sv :: SchemaVersion) -> List[SchemaVersion] {
       if sv.version > current_version { list.concat(acc, [sv]) } else { acc }
     })
-  list.sort_by(pending, fn (a :: SchemaVersion, b :: SchemaVersion) -> Bool {
-    a.version < b.version
-  })
+  list.sort_by(pending, fn (sv :: SchemaVersion) -> Int { sv.version })
 }
 
 # DDL for the migrations tracking table.
@@ -136,12 +126,12 @@ fn migrations_table_ddl(dialect :: conn.Dialect) -> Str {
   }
 }
 
-# Runtime stubs — will execute migrations once std.sql lands.
+# Runtime stubs — std.sql not yet in lex 0.9.
 fn apply(
-  _db      :: conn.Db,
-  _current :: Int,
+  _db       :: conn.Db,
+  _current  :: Int,
   _versions :: List[SchemaVersion]
-) -> [sql] Result[Int, dbe.DbErr] {
+) -> Result[Int, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available; use plan_migrations + to_alter_table to inspect the migration plan"))
 }
 
@@ -150,7 +140,7 @@ fn rollback(
   _current  :: Int,
   _versions :: List[SchemaVersion],
   _n        :: Int
-) -> [sql] Result[Int, dbe.DbErr] {
+) -> Result[Int, dbe.DbErr] {
   Err(DbQueryFailed("std.sql not yet available"))
 }
 
