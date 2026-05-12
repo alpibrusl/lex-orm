@@ -105,17 +105,75 @@ fn run_all() -> () {
   assert sq_lite.sql == "SELECT * FROM \"post\" WHERE \"id\" = ?"
 
   # for_dialect: Postgres replaces ? with $1, $2, $3
-  let sq_multi2 := {
+  let sq_multi := {
     sql: "UPDATE \"t\" SET \"a\" = ?, \"b\" = ? WHERE \"id\" = ?",
     params: [PStr("x"), PInt(2), PInt(3)]
   }
-  let sq_pg := q.for_dialect(sq_multi2, DbPostgres)
+  let sq_pg := q.for_dialect(sq_multi, DbPostgres)
   assert sq_pg.sql == "UPDATE \"t\" SET \"a\" = $1, \"b\" = $2 WHERE \"id\" = $3"
 
   # for_dialect on a query with no params is a no-op for both dialects
   let sq_bare := { sql: "SELECT * FROM \"post\"", params: [] }
   let sq_bare_pg := q.for_dialect(sq_bare, DbPostgres)
   assert sq_bare_pg.sql == "SELECT * FROM \"post\""
+
+  # build_count: SELECT COUNT(*) FROM
+  let cnt := q.build_count(q.select(repo_post))
+  assert cnt.sql == "SELECT COUNT(*) FROM \"post\""
+  assert list.len(cnt.params) == 0
+
+  # build_count with WHERE filter
+  let cnt_where := q.build_count(
+    q.where_clause(q.select(repo_post), p.eq("active", PBool(true))))
+  assert str.contains(cnt_where.sql, "COUNT(*)")
+  assert str.contains(cnt_where.sql, "WHERE")
+  assert list.len(cnt_where.params) == 1
+
+  # build_insert_returning appends RETURNING *
+  let ins_ret := q.build_insert_returning(q.insert(repo_post, val))
+  assert str.contains(ins_ret.sql, "INSERT INTO")
+  assert str.contains(ins_ret.sql, "RETURNING *")
+  assert list.len(ins_ret.params) == list.len(ins.params)
+
+  # build_upsert: ON CONFLICT ... DO UPDATE SET
+  let ups := q.build_upsert(q.upsert(repo_post, val, ["id"]))
+  assert str.contains(ups.sql, "INSERT INTO")
+  assert str.contains(ups.sql, "ON CONFLICT")
+  assert str.contains(ups.sql, "DO UPDATE SET")
+  assert str.contains(ups.sql, "EXCLUDED.")
+
+  # upsert with explicit update columns
+  let ups_ex := q.build_upsert(
+    q.on_conflict_update(q.upsert(repo_post, val, ["id"]), ["title"]))
+  assert str.contains(ups_ex.sql, "\"title\" = EXCLUDED.\"title\"")
+
+  # build_bulk_insert: one INSERT with multiple value rows
+  let val2 := JObj([
+    ("id",    JInt(2)),
+    ("title", JStr("Post 2")),
+    ("body",  JStr("Body 2")),
+  ])
+  let bulk := q.build_bulk_insert(q.bulk_insert(repo_post, [val, val2]))
+  assert str.contains(bulk.sql, "INSERT INTO")
+  assert str.contains(bulk.sql, "VALUES")
+  assert list.len(bulk.params) == 8
+
+  # paginate: page 2 of 10 => LIMIT 10 OFFSET 10
+  let pg2 := q.build_select(q.paginate(q.select(repo_post), 2, 10))
+  assert str.contains(pg2.sql, "LIMIT 10")
+  assert str.contains(pg2.sql, "OFFSET 10")
+
+  # paginate: page 1 => OFFSET 0
+  let pg1 := q.build_select(q.paginate(q.select(repo_post), 1, 5))
+  assert str.contains(pg1.sql, "LIMIT 5")
+  assert str.contains(pg1.sql, "OFFSET 0")
+
+  # page_result wraps items + metadata
+  let pg := q.page_result([JInt(1), JInt(2)], 3, 10, 42)
+  assert pg.page == 3
+  assert pg.per_page == 10
+  assert pg.total == 42
+  assert list.len(pg.items) == 2
 
   ()
 }

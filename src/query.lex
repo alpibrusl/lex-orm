@@ -53,6 +53,25 @@ type DeleteQuery[T] = {
   filters :: List[p.Predicate],
 }
 
+type UpsertQuery[T] = {
+  repo        :: Repo[T],
+  value       :: jv.Json,
+  conflict    :: List[Str],
+  update_cols :: List[Str],
+}
+
+type BulkInsertQuery[T] = {
+  repo   :: Repo[T],
+  values :: List[jv.Json],
+}
+
+type Page[T] = {
+  items    :: List[T],
+  page     :: Int,
+  per_page :: Int,
+  total    :: Int,
+}
+
 type SqlQuery = {
   sql    :: Str,
   params :: List[p.Param],
@@ -85,6 +104,17 @@ fn offset[T](q :: SelectQuery[T], n :: Int) -> SelectQuery[T] {
     limit_n: q.limit_n, offset_n: Some(n) }
 }
 
+# Convenience: applies LIMIT per_page OFFSET (page_num-1)*per_page.
+fn paginate[T](q :: SelectQuery[T], page_num :: Int, per_page :: Int) -> SelectQuery[T] {
+  let off := (page_num - 1) * per_page
+  offset(limit(q, per_page), off)
+}
+
+# Constructs a Page[T] from a fetched item list and a separately queried total count.
+fn page_result[T](items :: List[T], page_num :: Int, per_page :: Int, total :: Int) -> Page[T] {
+  { items: items, page: page_num, per_page: per_page, total: total }
+}
+
 fn insert[T](repo :: Repo[T], value :: jv.Json) -> InsertQuery[T] {
   { repo: repo, value: value }
 }
@@ -107,6 +137,20 @@ fn delete_from[T](repo :: Repo[T]) -> DeleteQuery[T] {
 
 fn where_delete[T](q :: DeleteQuery[T], pred :: p.Predicate) -> DeleteQuery[T] {
   { repo: q.repo, filters: list.concat(q.filters, [pred]) }
+}
+
+# upsert defaults to updating all non-conflict columns on conflict.
+# Call on_conflict_update to restrict which columns are updated.
+fn upsert[T](repo :: Repo[T], value :: jv.Json, conflict :: List[Str]) -> UpsertQuery[T] {
+  { repo: repo, value: value, conflict: conflict, update_cols: [] }
+}
+
+fn on_conflict_update[T](q :: UpsertQuery[T], cols :: List[Str]) -> UpsertQuery[T] {
+  { repo: q.repo, value: q.value, conflict: q.conflict, update_cols: cols }
+}
+
+fn bulk_insert[T](repo :: Repo[T], values :: List[jv.Json]) -> BulkInsertQuery[T] {
+  { repo: repo, values: values }
 }
 
 # ---- SQL building (pure) ------------------------------------------
@@ -139,6 +183,17 @@ fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
+fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
+  let tname := sql_quote(q.repo.table)
+  let base  := str.concat("SELECT COUNT(*) FROM ", tname)
+  let where_result := p.render_where(q.filters)
+  let where_sql    := match where_result { (s, _) => s }
+  let where_params := match where_result { (_, ps) => ps }
+  let final_sql := if str.is_empty(where_sql) { base }
+    else { str.concat(base, str.concat(" WHERE ", where_sql)) }
+  { sql: final_sql, params: where_params }
+}
+
 fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let fields := q.repo.schema.fields
@@ -155,6 +210,12 @@ fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
       str.concat(str.join(col_names, ", "), ") VALUES ("),
       str.concat(str.join(placeholders, ", "), ")")))
   { sql: sql, params: params }
+}
+
+# INSERT ... RETURNING * — use with Postgres to get the inserted row back.
+fn build_insert_returning[T](q :: InsertQuery[T]) -> SqlQuery {
+  let base := build_insert(q)
+  { sql: str.concat(base.sql, " RETURNING *"), params: base.params }
 }
 
 fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
@@ -185,6 +246,52 @@ fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
   let final_sql := if str.is_empty(where_sql) { base }
     else { str.concat(base, str.concat(" WHERE ", where_sql)) }
   { sql: final_sql, params: where_params }
+}
+
+# INSERT ... ON CONFLICT (cols) DO UPDATE SET col = EXCLUDED.col, ...
+# Conflict columns are excluded from the SET clause automatically.
+# Supported by Postgres and SQLite >= 3.24.
+fn build_upsert[T](q :: UpsertQuery[T]) -> SqlQuery {
+  let base := build_insert({ repo: q.repo, value: q.value })
+  let conflict_sql := str.concat("(",
+    str.concat(str.join(list.map(q.conflict, sql_quote), ", "), ")"))
+  let upd_cols := if list.is_empty(q.update_cols) {
+    list.fold(q.repo.schema.fields, [],
+      fn (acc :: List[Str], f :: s.Field) -> List[Str] {
+        let in_conflict := list.fold(q.conflict, false,
+          fn (found :: Bool, c :: Str) -> Bool { found or (f.name == c) })
+        if in_conflict { acc } else { list.concat(acc, [f.name]) }
+      })
+  } else {
+    q.update_cols
+  }
+  let set_parts := list.map(upd_cols, fn (col :: Str) -> Str {
+    let qc := sql_quote(col)
+    str.concat(qc, str.concat(" = EXCLUDED.", qc))
+  })
+  let suffix := str.concat(" ON CONFLICT ", str.concat(conflict_sql,
+    str.concat(" DO UPDATE SET ", str.join(set_parts, ", "))))
+  { sql: str.concat(base.sql, suffix), params: base.params }
+}
+
+# Single INSERT with multiple value rows: INSERT INTO t (cols) VALUES (?,?),(?,?)
+fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
+  let tname  := sql_quote(q.repo.table)
+  let fields := q.repo.schema.fields
+  let col_names := list.map(fields, fn (f :: s.Field) -> Str { sql_quote(f.name) })
+  let row_ph := str.concat("(",
+    str.concat(str.join(list.map(fields, fn (_f :: s.Field) -> Str { "?" }), ", "), ")"))
+  let rows_sql := str.join(list.map(q.values, fn (_v :: jv.Json) -> Str { row_ph }), ", ")
+  let all_params := list.fold(q.values, [],
+    fn (acc :: List[p.Param], v :: jv.Json) -> List[p.Param] {
+      list.concat(acc, list.map(fields, fn (f :: s.Field) -> p.Param {
+        json_to_param(jv.get_field(v, f.name))
+      }))
+    })
+  let sql := str.concat(
+    str.concat("INSERT INTO ", str.concat(tname, " (")),
+    str.concat(str.join(col_names, ", "), str.concat(") VALUES ", rows_sql)))
+  { sql: sql, params: all_params }
 }
 
 # ---- Dialect-aware placeholder numbering --------------------------
@@ -237,6 +344,16 @@ fn run_update[T](q :: UpdateQuery[T], db :: conn.Db) -> Result[Int, dbe.DbErr] {
 fn run_delete[T](q :: DeleteQuery[T], db :: conn.Db) -> Result[Int, dbe.DbErr] {
   let _sq := for_dialect(build_delete(q), db.dialect)
   Err(DbQueryFailed("std.sql not yet available; use build_delete to inspect the SQL plan"))
+}
+
+fn run_upsert[T](q :: UpsertQuery[T], db :: conn.Db) -> Result[T, dbe.DbErr] {
+  let _sq := for_dialect(build_upsert(q), db.dialect)
+  Err(DbQueryFailed("std.sql not yet available; use build_upsert to inspect the SQL plan"))
+}
+
+fn run_bulk_insert[T](q :: BulkInsertQuery[T], db :: conn.Db) -> Result[Int, dbe.DbErr] {
+  let _sq := for_dialect(build_bulk_insert(q), db.dialect)
+  Err(DbQueryFailed("std.sql not yet available; use build_bulk_insert to inspect the SQL plan"))
 }
 
 fn transaction[A](
