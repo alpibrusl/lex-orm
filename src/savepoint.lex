@@ -11,8 +11,8 @@ fn savepoint[A](
   body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr],
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "SAVEPOINT " + name, []) {
-    Err(e) => Err(DbTransactionFailed("SAVEPOINT " + name + " failed: " + e)),
-    Ok(_)  =>
+    Err(se) => Err(DbTransactionFailed("SAVEPOINT " + name + " failed: " + se.message)),
+    Ok(_)   =>
       match body(db) {
         Err(e) => {
           let _ := sql.exec(db.handle, "ROLLBACK TO SAVEPOINT " + name, [])
@@ -21,8 +21,8 @@ fn savepoint[A](
         },
         Ok(v) =>
           match sql.exec(db.handle, "RELEASE SAVEPOINT " + name, []) {
-            Err(e) => Err(DbTransactionFailed("RELEASE SAVEPOINT " + name + " failed: " + e)),
-            Ok(_)  => Ok(v),
+            Err(se) => Err(DbTransactionFailed("RELEASE SAVEPOINT " + name + " failed: " + se.message)),
+            Ok(_)   => Ok(v),
           },
       },
   }

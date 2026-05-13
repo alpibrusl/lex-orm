@@ -1,4 +1,5 @@
 import "std.sql"  as sql
+import "std.time" as time
 
 import "./predicate"  as p
 import "./query"      as q
@@ -47,4 +48,22 @@ fn run_restore(
   db   :: conn.ConnDb,
 ) -> [sql] Result[Int, dbe.DbErr] {
   q.run_update(restore(repo, pred), db)
+}
+
+# Soft-delete using the current wall-clock time (ISO-8601 UTC via std.time).
+fn soft_delete_now(
+  repo :: q.RepoSchema,
+  pred :: p.Predicate,
+) -> [time] q.UpdateQuery {
+  q.where_update(
+    q.set_col(q.update(repo), "deleted_at", PStr(time.now_str())),
+    pred)
+}
+
+fn run_soft_delete_now(
+  repo :: q.RepoSchema,
+  pred :: p.Predicate,
+  db   :: conn.ConnDb,
+) -> [sql, time] Result[Int, dbe.DbErr] {
+  q.run_update(soft_delete_now(repo, pred), db)
 }

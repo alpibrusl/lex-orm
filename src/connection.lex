@@ -28,22 +28,22 @@ fn open(url :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   let d := if str_starts_with(url, "postgres://") or str_starts_with(url, "postgresql://") {
     DbPostgres } else { DbSqlite }
   match sql.open(url) {
-    Err(msg) => Err(DbConnFailed(msg)),
-    Ok(h)    => Ok({ dialect: d, handle: h }),
+    Err(se) => Err(DbConnFailed(se.message)),
+    Ok(h)   => Ok({ dialect: d, handle: h }),
   }
 }
 
 fn connect_postgres(url :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   match sql.open(url) {
-    Err(msg) => Err(DbConnFailed(msg)),
-    Ok(h)    => Ok({ dialect: DbPostgres, handle: h }),
+    Err(se) => Err(DbConnFailed(se.message)),
+    Ok(h)   => Ok({ dialect: DbPostgres, handle: h }),
   }
 }
 
 fn connect_sqlite(path :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   match sql.open(path) {
-    Err(msg) => Err(DbConnFailed(msg)),
-    Ok(h)    => Ok({ dialect: DbSqlite, handle: h }),
+    Err(se) => Err(DbConnFailed(se.message)),
+    Ok(h)   => Ok({ dialect: DbSqlite, handle: h }),
   }
 }
 

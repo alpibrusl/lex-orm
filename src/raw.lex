@@ -17,8 +17,8 @@ fn exec_raw(
 ) -> [sql] Result[Int, dbe.DbErr] {
   let sq := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(DbQueryFailed(e)),
-    Ok(n)  => Ok(n),
+    Err(se) => Err(dbe.sql_err_to_db_err(se)),
+    Ok(n)   => Ok(n),
   }
 }
 
@@ -32,9 +32,9 @@ fn query_raw[R](
   decode  :: (jv.Json) -> Result[R, se.Errors],
 ) -> [sql] Result[List[R], dbe.DbErr] {
   let sq  := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let raw :: Result[List[{ _j :: Str }], SqlError] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(se)  => Err(dbe.sql_err_to_db_err(se)),
     Ok(rows) =>
       list.fold(rows, Ok([]),
         fn (acc :: Result[List[R], dbe.DbErr], row :: { _j :: Str }) -> Result[List[R], dbe.DbErr] {
@@ -71,9 +71,9 @@ fn introspect_tables(db :: conn.ConnDb) -> [sql] Result[List[Str], dbe.DbErr] {
       "SELECT name FROM sqlite_master WHERE type = 'table' " +
       "AND name NOT LIKE 'sqlite_%' ORDER BY name",
   }
-  let raw :: Result[List[{ name :: Str }], Str] := sql.query(db.handle, sql_str, [])
+  let raw :: Result[List[{ name :: Str }], SqlError] := sql.query(db.handle, sql_str, [])
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(se)  => Err(dbe.sql_err_to_db_err(se)),
     Ok(rows) => Ok(list.map(rows, fn (r :: { name :: Str }) -> Str { r.name })),
   }
 }
@@ -84,7 +84,7 @@ fn introspect_columns(
   table :: Str,
 ) -> [sql] Result[List[ColumnInfo], dbe.DbErr] {
   let param := [PStr(table)]
-  let raw :: Result[List[{ name :: Str, data_type :: Str }], Str] :=
+  let raw :: Result[List[{ name :: Str, data_type :: Str }], SqlError] :=
     match db.dialect {
       DbPostgres =>
         sql.query(db.handle,
@@ -99,7 +99,7 @@ fn introspect_columns(
           param),
     }
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(se)  => Err(dbe.sql_err_to_db_err(se)),
     Ok(rows) => Ok(list.map(rows,
       fn (r :: { name :: Str, data_type :: Str }) -> ColumnInfo {
         { name: r.name, data_type: r.data_type }

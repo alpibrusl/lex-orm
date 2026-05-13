@@ -36,9 +36,9 @@ fn run_cte[R](
   decode :: (jv.Json) -> Result[R, se.Errors],
 ) -> [sql] Result[List[R], dbe.DbErr] {
   let sq  := q.for_dialect(build_cte(cq, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let raw :: Result[List[{ _j :: Str }], SqlError] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(se)  => Err(dbe.sql_err_to_db_err(se)),
     Ok(rows) =>
       list.fold(rows, Ok([]),
         fn (acc :: Result[List[R], dbe.DbErr], row :: { _j :: Str }) -> Result[List[R], dbe.DbErr] {

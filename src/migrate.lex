@@ -134,7 +134,7 @@ fn apply(
 ) -> [sql] Result[Int, dbe.DbErr] {
   let ddl := migrations_table_ddl(db.dialect)
   match sql.exec(db.handle, ddl, []) {
-    Err(e) => Err(DbQueryFailed(e)),
+    Err(se) => Err(dbe.sql_err_to_db_err(se)),
     Ok(_)  => {
       let all_sorted := list.sort_by(versions, fn (sv :: SchemaVersion) -> Int { sv.version })
       let pending    := plan_migrations(current, versions)
@@ -168,7 +168,7 @@ fn run_pending(
             "INSERT INTO \"lex_schema_migrations\" (version) VALUES (" +
             int.to_str(sv.version) + ")"
           match sql.exec(db.handle, insert_sql, []) {
-            Err(e) => Err(DbQueryFailed(e)),
+            Err(se) => Err(dbe.sql_err_to_db_err(se)),
             Ok(_)  => run_pending(db, all_sorted, rest, applied + 1),
           }
         },
@@ -214,7 +214,7 @@ fn rollback_pending(
             "DELETE FROM \"lex_schema_migrations\" WHERE version = " +
             int.to_str(sv.version)
           match sql.exec(db.handle, delete_sql, []) {
-            Err(e) => Err(DbQueryFailed(e)),
+            Err(se) => Err(dbe.sql_err_to_db_err(se)),
             Ok(_)  => rollback_pending(db, all_sorted, rest, count + 1),
           }
         },
@@ -269,7 +269,7 @@ fn exec_stmts(db :: conn.ConnDb, stmts :: List[Str]) -> [sql] Result[Unit, dbe.D
         Err(e) => Err(e),
         Ok(_)  =>
           match sql.exec(db.handle, stmt, []) {
-            Err(e) => Err(DbQueryFailed(e)),
+            Err(se) => Err(dbe.sql_err_to_db_err(se)),
             Ok(_)  => Ok(()),
           },
       }
