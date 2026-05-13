@@ -1,0 +1,50 @@
+import "std.sql"  as sql
+
+import "./predicate"  as p
+import "./query"      as q
+import "./connection" as conn
+import "./error"      as dbe
+
+# Add WHERE deleted_at IS NULL — exclude soft-deleted rows.
+fn where_not_deleted[T](sel :: q.SelectQuery[T]) -> q.SelectQuery[T] {
+  q.where_clause(sel, p.is_null("deleted_at"))
+}
+
+# Return the query unchanged — explicitly include soft-deleted rows.
+fn with_deleted[T](sel :: q.SelectQuery[T]) -> q.SelectQuery[T] { sel }
+
+# Build UPDATE SET deleted_at = timestamp WHERE pred.
+# The caller provides the timestamp string (e.g. "2026-05-13T10:00:00Z").
+fn soft_delete[T](
+  repo      :: q.Repo[T],
+  pred      :: p.Predicate,
+  timestamp :: Str,
+) -> q.UpdateQuery[T] {
+  q.where_update(
+    q.set_col(q.update(repo), "deleted_at", PStr(timestamp)),
+    pred)
+}
+
+# Build UPDATE SET deleted_at = NULL WHERE pred (un-delete).
+fn restore[T](repo :: q.Repo[T], pred :: p.Predicate) -> q.UpdateQuery[T] {
+  q.where_update(
+    q.set_col(q.update(repo), "deleted_at", PNull),
+    pred)
+}
+
+fn run_soft_delete[T](
+  repo      :: q.Repo[T],
+  pred      :: p.Predicate,
+  timestamp :: Str,
+  db        :: conn.Db,
+) -> [sql] Result[Int, dbe.DbErr] {
+  q.run_update(soft_delete(repo, pred, timestamp), db)
+}
+
+fn run_restore[T](
+  repo :: q.Repo[T],
+  pred :: p.Predicate,
+  db   :: conn.Db,
+) -> [sql] Result[Int, dbe.DbErr] {
+  q.run_update(restore(repo, pred), db)
+}
