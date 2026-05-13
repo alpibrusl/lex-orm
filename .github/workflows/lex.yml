@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# lex-orm's lex.toml declares lex-schema as a path-resolved sibling.
+# The job checks lex-schema out next to the lex-orm checkout so
+# `lex pkg install` can resolve it. (lex-orm also ships a vendor/
+# copy of lex-schema as a pre-package-system fallback; the path
+# dep takes precedence when lex.toml resolves deps.)
+
+env:
+  LEX_VERSION: v0.9.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout lex-orm
+        uses: actions/checkout@v4
+        with:
+          path: lex-orm
+
+      - name: Checkout lex-schema (sibling path dep)
+        uses: actions/checkout@v4
+        with:
+          repository: alpibrusl/lex-schema
+          ref: main
+          path: lex-schema
+
+      - name: Install lex from release
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.lex-bin"
+          url="https://github.com/alpibrusl/lex-lang/releases/download/${LEX_VERSION}/lex-${LEX_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL "$url" | tar -xz -C "$HOME/.lex-bin" --strip-components=1
+          chmod +x "$HOME/.lex-bin/lex"
+          echo "$HOME/.lex-bin" >> "$GITHUB_PATH"
+
+      - name: Show lex version
+        run: lex --version
+
+      # lex ci runs: pkg install → check --strict src/ → fmt --check → test
+      - name: Lex CI pipeline
+        working-directory: lex-orm
+        run: lex ci
