@@ -155,58 +155,56 @@ fn page_result[T](items :: List[T], total :: Int, page :: Int, per_page :: Int) 
 
 fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
-  let base  := str.concat("SELECT * FROM ", tname)
+  let base  := "SELECT * FROM " + tname
   let where_result := p.render_where(q.filters)
   let where_sql    := match where_result { (s, _) => s }
   let where_params := match where_result { (_, ps) => ps }
   let with_where := if str.is_empty(where_sql) { base }
-    else { str.concat(base, str.concat(" WHERE ", where_sql)) }
+    else { base + " WHERE " + where_sql }
   let with_order := if list.is_empty(q.ordering) { with_where }
     else {
       let order_parts := list.map(q.ordering, fn (pair :: (Str, Order)) -> Str {
         let col := match pair { (c, _) => c }
         let dir := match pair { (_, d) => d }
-        str.concat(sql_quote(col), match dir { Asc => " ASC", Desc => " DESC" })
+        sql_quote(col) + match dir { Asc => " ASC", Desc => " DESC" }
       })
-      str.concat(with_where, str.concat(" ORDER BY ", str.join(order_parts, ", ")))
+      with_where + " ORDER BY " + str.join(order_parts, ", ")
     }
   let with_limit := match q.limit_n {
     None    => with_order,
-    Some(n) => str.concat(with_order, str.concat(" LIMIT ", int.to_str(n))),
+    Some(n) => with_order + " LIMIT " + int.to_str(n),
   }
   let final_sql := match q.offset_n {
     None    => with_limit,
-    Some(n) => str.concat(with_limit, str.concat(" OFFSET ", int.to_str(n))),
+    Some(n) => with_limit + " OFFSET " + int.to_str(n),
   }
   { sql: final_sql, params: where_params }
 }
 
 fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
-  let base  := str.concat("SELECT COUNT(*) AS count FROM ", tname)
+  let base  := "SELECT COUNT(*) AS count FROM " + tname
   let where_result := p.render_where(q.filters)
   let where_sql    := match where_result { (s, _) => s }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
-    else { str.concat(base, str.concat(" WHERE ", where_sql)) }
+    else { base + " WHERE " + where_sql }
   { sql: final_sql, params: where_params }
 }
 
 fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let fields := q.repo.schema.fields
-  let col_names := list.map(fields, fn (f :: s.Field) -> Str {
-    sql_quote(f.name)
-  })
+  let col_names    := list.map(fields, fn (f :: s.Field) -> Str { sql_quote(f.name) })
   let placeholders := list.map(fields, fn (_f :: s.Field) -> Str { "?" })
-  let params := list.map(fields, fn (f :: s.Field) -> p.Param {
+  let params       := list.map(fields, fn (f :: s.Field) -> p.Param {
     json_to_param(jv.get_field(q.value, f.name))
   })
-  let sql_str := str.concat(
-    str.concat("INSERT INTO ", str.concat(tname, " (")),
-    str.concat(
-      str.concat(str.join(col_names, ", "), ") VALUES ("),
-      str.concat(str.join(placeholders, ", "), ")")))
+  let sql_str :=
+    "INSERT INTO " + tname + " (" +
+    str.join(col_names, ", ") +
+    ") VALUES (" +
+    str.join(placeholders, ", ") + ")"
   { sql: sql_str, params: params }
 }
 
@@ -214,35 +212,34 @@ fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
   let set_parts := list.map(q.sets, fn (pair :: (Str, p.Param)) -> Str {
     let col := match pair { (c, _) => c }
-    str.concat(sql_quote(col), " = ?")
+    sql_quote(col) + " = ?"
   })
   let set_params := list.map(q.sets, fn (pair :: (Str, p.Param)) -> p.Param {
     match pair { (_, v) => v }
   })
-  let base := str.concat("UPDATE ", str.concat(tname,
-    str.concat(" SET ", str.join(set_parts, ", "))))
+  let base := "UPDATE " + tname + " SET " + str.join(set_parts, ", ")
   let where_result := p.render_where(q.filters)
   let where_sql    := match where_result { (s, _) => s }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
-    else { str.concat(base, str.concat(" WHERE ", where_sql)) }
+    else { base + " WHERE " + where_sql }
   { sql: final_sql, params: list.concat(set_params, where_params) }
 }
 
 fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
-  let base  := str.concat("DELETE FROM ", tname)
+  let base  := "DELETE FROM " + tname
   let where_result := p.render_where(q.filters)
   let where_sql    := match where_result { (s, _) => s }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
-    else { str.concat(base, str.concat(" WHERE ", where_sql)) }
+    else { base + " WHERE " + where_sql }
   { sql: final_sql, params: where_params }
 }
 
 fn build_upsert[T](q :: UpsertQuery[T]) -> SqlQuery {
-  let base         := build_insert({ repo: q.repo, value: q.value })
-  let conflict_str := str.join(list.map(q.conflict, sql_quote), ", ")
+  let base          := build_insert({ repo: q.repo, value: q.value })
+  let conflict_str  := str.join(list.map(q.conflict, sql_quote), ", ")
   let update_params := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> p.Param {
     match pair { (_, v) => v }
   })
@@ -250,38 +247,33 @@ fn build_upsert[T](q :: UpsertQuery[T]) -> SqlQuery {
     if list.is_empty(q.conflict) {
       " ON CONFLICT DO NOTHING"
     } else if list.is_empty(q.update_set) {
-      str.concat(" ON CONFLICT (", str.concat(conflict_str, ") DO NOTHING"))
+      " ON CONFLICT (" + conflict_str + ") DO NOTHING"
     } else {
       let updates := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> Str {
-        let col := match pair { (c, _) => c }
-        let qc  := sql_quote(col)
-        str.concat(str.concat(qc, " = EXCLUDED."), qc)
+        let qc := sql_quote(match pair { (c, _) => c })
+        qc + " = EXCLUDED." + qc
       })
-      str.concat(" ON CONFLICT (", str.concat(conflict_str,
-        str.concat(") DO UPDATE SET ", str.join(updates, ", "))))
+      " ON CONFLICT (" + conflict_str + ") DO UPDATE SET " + str.join(updates, ", ")
     }
-  { sql: str.concat(base.sql, conflict_clause),
-    params: list.concat(base.params, update_params) }
+  { sql: base.sql + conflict_clause, params: list.concat(base.params, update_params) }
 }
 
 fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
-  let tname  := sql_quote(q.repo.table)
-  let fields := q.repo.schema.fields
+  let tname     := sql_quote(q.repo.table)
+  let fields    := q.repo.schema.fields
   let col_names := list.map(fields, fn (f :: s.Field) -> Str { sql_quote(f.name) })
-  let row_ph := str.concat("(", str.concat(
-    str.join(list.map(fields, fn (_f :: s.Field) -> Str { "?" }), ", "), ")"))
-  let all_rows := list.map(q.values, fn (_v :: jv.Json) -> Str { row_ph })
+  let row_ph    := "(" + str.join(list.map(fields, fn (_f :: s.Field) -> Str { "?" }), ", ") + ")"
+  let all_rows  := list.map(q.values, fn (_v :: jv.Json) -> Str { row_ph })
   let all_params := list.fold(q.values, [],
     fn (acc :: List[p.Param], v :: jv.Json) -> List[p.Param] {
-      let row_params := list.map(fields, fn (f :: s.Field) -> p.Param {
+      list.concat(acc, list.map(fields, fn (f :: s.Field) -> p.Param {
         json_to_param(jv.get_field(v, f.name))
-      })
-      list.concat(acc, row_params)
+      }))
     })
-  let sql_str := str.concat(
-    str.concat("INSERT INTO ", str.concat(tname, " (")),
-    str.concat(str.join(col_names, ", "),
-      str.concat(") VALUES ", str.join(all_rows, ", "))))
+  let sql_str :=
+    "INSERT INTO " + tname + " (" +
+    str.join(col_names, ", ") +
+    ") VALUES " + str.join(all_rows, ", ")
   { sql: sql_str, params: all_params }
 }
 
@@ -293,26 +285,26 @@ fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
 fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
   let pairs := list.fold(fields, [],
     fn (acc :: List[Str], f :: s.Field) -> List[Str] {
-      list.concat(acc, [str.concat("'", str.concat(f.name, "'")), sql_quote(f.name)])
+      list.concat(acc, ["'" + f.name + "'", sql_quote(f.name)])
     })
   let json_fn := match dialect { DbPostgres => "json_build_object", DbSqlite => "json_object" }
-  str.concat(json_fn, str.concat("(", str.concat(str.join(pairs, ", "), ") AS _j")))
+  json_fn + "(" + str.join(pairs, ", ") + ") AS _j"
 }
 
 fn build_select_json[T](q :: SelectQuery[T], dialect :: conn.Dialect) -> SqlQuery {
   let tname     := sql_quote(q.repo.table)
   let json_expr := json_agg_expr(q.repo.schema.fields, dialect)
-  let base      := str.concat("SELECT ", str.concat(json_expr, str.concat(" FROM ", tname)))
+  let base      := "SELECT " + json_expr + " FROM " + tname
   let full      := build_select(q)
-  let star_pfx  := str.concat("SELECT * FROM ", tname)
+  let star_pfx  := "SELECT * FROM " + tname
   let suffix    := str.slice(full.sql, str.len(star_pfx), str.len(full.sql))
-  { sql: str.concat(base, suffix), params: full.params }
+  { sql: base + suffix, params: full.params }
 }
 
 fn build_insert_returning_json[T](q :: InsertQuery[T], dialect :: conn.Dialect) -> SqlQuery {
   let base      := build_insert(q)
   let json_expr := json_agg_expr(q.repo.schema.fields, dialect)
-  { sql: str.concat(base.sql, str.concat(" RETURNING ", json_expr)), params: base.params }
+  { sql: base.sql + " RETURNING " + json_expr, params: base.params }
 }
 
 # ---- Dialect-aware placeholder numbering --------------------------
@@ -335,7 +327,7 @@ fn number_placeholders(raw :: Str) -> Str {
       fn (acc :: (Str, Int), part :: Str) -> (Str, Int) {
         let s := match acc { (s2, _) => s2 }
         let i := match acc { (_, i2) => i2 }
-        (str.concat(s, str.concat(str.concat("$", int.to_str(i)), part)), i + 1)
+        (s + "$" + int.to_str(i) + part, i + 1)
       })
     match result { (s, _) => s }
   }
@@ -467,7 +459,7 @@ fn transaction[A](
   body :: (conn.Db) -> [sql] Result[A, dbe.DbErr]
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "BEGIN", []) {
-    Err(e) => Err(DbTransactionFailed(str.concat("BEGIN failed: ", e))),
+    Err(e) => Err(DbTransactionFailed("BEGIN failed: " + e)),
     Ok(_)  =>
       match body(db) {
         Err(e) => {
@@ -476,7 +468,7 @@ fn transaction[A](
         },
         Ok(v) =>
           match sql.exec(db.handle, "COMMIT", []) {
-            Err(e) => Err(DbTransactionFailed(str.concat("COMMIT failed: ", e))),
+            Err(e) => Err(DbTransactionFailed("COMMIT failed: " + e)),
             Ok(_)  => Ok(v),
           },
       },
@@ -485,9 +477,7 @@ fn transaction[A](
 
 # ---- Helpers (pure) -----------------------------------------------
 
-fn sql_quote(name :: Str) -> Str {
-  str.concat("\"", str.concat(name, "\""))
-}
+fn sql_quote(name :: Str) -> Str { "\"" + name + "\"" }
 
 fn sql_ident(name :: Str) -> Str {
   let segs := list.fold(str.split(name, "_"), [],

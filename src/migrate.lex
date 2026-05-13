@@ -53,53 +53,32 @@ fn to_alter_table(
   changes :: List[DdlChange],
   dialect :: conn.Dialect
 ) -> Str {
-  let stmts := list.map(changes, fn (ch :: DdlChange) -> Str {
+  str.join(list.map(changes, fn (ch :: DdlChange) -> Str {
     alter_stmt(table, ch, dialect)
-  })
-  str.join(stmts, "\n")
+  }), "\n")
 }
 
 fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
   let qt := sql_quote(table)
   match ch {
-    AddColumn(f) => {
-      let col := sql_quote(f.name)
-      let ty  := field_base_type(f.kind, dialect)
-      let nn  := if f.required { " NOT NULL" } else { "" }
-      str.concat("ALTER TABLE ", str.concat(qt,
-        str.concat(" ADD COLUMN ", str.concat(col,
-          str.concat(" ", str.concat(ty, nn))))))
-    },
+    AddColumn(f) =>
+      "ALTER TABLE " + qt + " ADD COLUMN " + sql_quote(f.name) +
+      " " + field_base_type(f.kind, dialect) +
+      if f.required { " NOT NULL" } else { "" },
     DropColumn(name) =>
-      str.concat("ALTER TABLE ", str.concat(qt,
-        str.concat(" DROP COLUMN ", sql_quote(name)))),
-    RenameColumn(r) => {
-      let from_q := sql_quote(r.from)
-      let to_q   := sql_quote(r.to)
-      str.concat("ALTER TABLE ", str.concat(qt,
-        str.concat(" RENAME COLUMN ", str.concat(from_q,
-          str.concat(" TO ", to_q)))))
-    },
-    SetNullable(name) => {
+      "ALTER TABLE " + qt + " DROP COLUMN " + sql_quote(name),
+    RenameColumn(r) =>
+      "ALTER TABLE " + qt + " RENAME COLUMN " + sql_quote(r.from) + " TO " + sql_quote(r.to),
+    SetNullable(name) =>
       match dialect {
-        DbPostgres =>
-          str.concat("ALTER TABLE ", str.concat(qt,
-            str.concat(" ALTER COLUMN ", str.concat(sql_quote(name),
-              " DROP NOT NULL")))),
-        DbSqlite =>
-          str.concat("-- SQLite: rebuild table to drop NOT NULL on ", name),
-      }
-    },
-    SetNotNull(name) => {
+        DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " DROP NOT NULL",
+        DbSqlite   => "-- SQLite: rebuild table to drop NOT NULL on " + name,
+      },
+    SetNotNull(name) =>
       match dialect {
-        DbPostgres =>
-          str.concat("ALTER TABLE ", str.concat(qt,
-            str.concat(" ALTER COLUMN ", str.concat(sql_quote(name),
-              " SET NOT NULL")))),
-        DbSqlite =>
-          str.concat("-- SQLite: rebuild table to add NOT NULL on ", name),
-      }
-    },
+        DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " SET NOT NULL",
+        DbSqlite   => "-- SQLite: rebuild table to add NOT NULL on " + name,
+      },
   }
 }
 
@@ -163,10 +142,9 @@ fn run_pending(
       match exec_stmts(db, stmts) {
         Err(e) => Err(e),
         Ok(_)  => {
-          let ver_str    := int.to_str(sv.version)
-          let insert_sql := str.concat(
-            "INSERT INTO \"lex_schema_migrations\" (version) VALUES (",
-            str.concat(ver_str, ")"))
+          let insert_sql :=
+            "INSERT INTO \"lex_schema_migrations\" (version) VALUES (" +
+            int.to_str(sv.version) + ")"
           match sql.exec(db.handle, insert_sql, []) {
             Err(e) => Err(DbQueryFailed(e)),
             Ok(_)  => run_pending(db, all_sorted, rest, applied + 1),
@@ -210,10 +188,9 @@ fn rollback_pending(
       match exec_stmts(db, stmts) {
         Err(e) => Err(e),
         Ok(_)  => {
-          let ver_str    := int.to_str(sv.version)
-          let delete_sql := str.concat(
-            "DELETE FROM \"lex_schema_migrations\" WHERE version = ",
-            ver_str)
+          let delete_sql :=
+            "DELETE FROM \"lex_schema_migrations\" WHERE version = " +
+            int.to_str(sv.version)
           match sql.exec(db.handle, delete_sql, []) {
             Err(e) => Err(DbQueryFailed(e)),
             Ok(_)  => rollback_pending(db, all_sorted, rest, count + 1),
@@ -279,9 +256,7 @@ fn exec_stmts(db :: conn.Db, stmts :: List[Str]) -> [sql] Result[Unit, dbe.DbErr
 
 # ---- Helpers (pure) -----------------------------------------------
 
-fn sql_quote(name :: Str) -> Str {
-  str.concat("\"", str.concat(name, "\""))
-}
+fn sql_quote(name :: Str) -> Str { "\"" + name + "\"" }
 
 fn field_present(fields :: List[s.Field], name :: Str) -> Bool {
   list.fold(fields, false, fn (acc :: Bool, f :: s.Field) -> Bool {
