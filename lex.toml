@@ -1,6 +1,7 @@
 [package]
-name = "lex-orm"
+name    = "lex-orm"
 version = "0.1.0"
+lex     = "0.9.1"
 
 [dependencies]
 lex-schema = { path = "../lex-schema" }
