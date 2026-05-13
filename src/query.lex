@@ -246,14 +246,16 @@ fn build_upsert[T](q :: UpsertQuery[T]) -> SqlQuery {
   let conflict_clause :=
     if list.is_empty(q.conflict) {
       " ON CONFLICT DO NOTHING"
-    } else if list.is_empty(q.update_set) {
-      " ON CONFLICT (" + conflict_str + ") DO NOTHING"
     } else {
-      let updates := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> Str {
-        let qc := sql_quote(match pair { (c, _) => c })
-        qc + " = EXCLUDED." + qc
-      })
-      " ON CONFLICT (" + conflict_str + ") DO UPDATE SET " + str.join(updates, ", ")
+      if list.is_empty(q.update_set) {
+        " ON CONFLICT (" + conflict_str + ") DO NOTHING"
+      } else {
+        let updates := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> Str {
+          let qc := sql_quote(match pair { (c, _) => c })
+          qc + " = EXCLUDED." + qc
+        })
+        " ON CONFLICT (" + conflict_str + ") DO UPDATE SET " + str.join(updates, ", ")
+      }
     }
   { sql: base.sql + conflict_clause, params: list.concat(base.params, update_params) }
 }
