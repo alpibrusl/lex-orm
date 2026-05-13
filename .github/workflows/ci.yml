@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: lex check + audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout lex-orm
+        uses: actions/checkout@v4
+        with:
+          path: lex-orm
+
+      - name: Checkout lex-schema
+        uses: actions/checkout@v4
+        with:
+          repository: alpibrusl/lex-schema
+          path: lex-schema
+
+      - name: Download lex v0.9.1
+        run: |
+          VERSION=0.9.1
+          NAME="lex-v${VERSION}-x86_64-unknown-linux-gnu"
+          curl -sSLO --retry 3 \
+            "https://github.com/alpibrusl/lex-lang/releases/download/v${VERSION}/${NAME}.tar.gz"
+          tar -xzf "${NAME}.tar.gz"
+          echo "$PWD/${NAME}" >> "$GITHUB_PATH"
+
+      - name: Type-check all sources
+        working-directory: lex-orm
+        run: |
+          failed=0
+          for f in src/*.lex; do
+            if ! lex check "$f" 2>&1; then
+              echo "FAIL: $f"
+              failed=$((failed + 1))
+            fi
+          done
+          exit $failed
+
+      - name: Audit SQL effect declarations
+        working-directory: lex-orm
+        run: lex audit --effect sql src/
