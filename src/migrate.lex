@@ -13,11 +13,24 @@ type DdlChange =
   | RenameColumn({ from :: Str, to :: Str })
   | SetNullable(Str)
   | SetNotNull(Str)
+  | AddIndex({ name :: Str, columns :: List[Str], unique :: Bool })
+  | DropIndex(Str)
 
 type SchemaVersion = {
   version :: Int,
   schema  :: s.ModelSchema,
 }
+
+# Smart constructors for index changes.
+fn add_index(name :: Str, columns :: List[Str]) -> DdlChange {
+  AddIndex({ name: name, columns: columns, unique: false })
+}
+
+fn add_unique_index(name :: Str, columns :: List[Str]) -> DdlChange {
+  AddIndex({ name: name, columns: columns, unique: true })
+}
+
+fn drop_index(name :: Str) -> DdlChange { DropIndex(name) }
 
 # Diff two ModelSchemas: detect added, dropped, and nullability-changed columns.
 fn diff(old :: s.ModelSchema, new :: s.ModelSchema) -> List[DdlChange] {
@@ -47,7 +60,7 @@ fn diff(old :: s.ModelSchema, new :: s.ModelSchema) -> List[DdlChange] {
   list.concat(list.concat(added, dropped), nullability)
 }
 
-# Emit ALTER TABLE SQL for a list of DdlChanges.
+# Emit ALTER TABLE / CREATE INDEX SQL for a list of DdlChanges.
 fn to_alter_table(
   table   :: Str,
   changes :: List[DdlChange],
@@ -79,6 +92,12 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
         DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " SET NOT NULL",
         DbSqlite   => "-- SQLite: rebuild table to add NOT NULL on " + name,
       },
+    AddIndex(idx) =>
+      let unique_pfx := if idx.unique { "UNIQUE " } else { "" }
+      "CREATE " + unique_pfx + "INDEX IF NOT EXISTS " + sql_quote(idx.name) +
+      " ON " + qt + " (" + str.join(list.map(idx.columns, sql_quote), ", ") + ")",
+    DropIndex(name) =>
+      "DROP INDEX IF EXISTS " + sql_quote(name),
   }
 }
 

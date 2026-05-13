@@ -151,13 +151,32 @@ fn page_result[T](items :: List[T], total :: Int, page :: Int, per_page :: Int) 
   { items: items, total: total, page: page, per_page: per_page }
 }
 
+# Stamp updated_at on an update query. Caller provides the timestamp string.
+fn touch[T](upd :: UpdateQuery[T], now :: Str) -> UpdateQuery[T] {
+  set_col(upd, "updated_at", PStr(now))
+}
+
+# Build an EXISTS (...) predicate from a sub-select.
+fn exists_subquery[T](sub :: SelectQuery[T]) -> p.Predicate {
+  let wr         := p.render_where(sub.filters)
+  let where_sql  := match wr { (s2, _) => s2 }
+  let where_ps   := match wr { (_, ps) => ps }
+  let where_part := if str.is_empty(where_sql) { "" }
+    else { " WHERE " + where_sql }
+  let limit_part := match sub.limit_n {
+    None    => "",
+    Some(n) => " LIMIT " + int.to_str(n),
+  }
+  PRaw("EXISTS (SELECT 1 FROM " + sql_quote(sub.repo.table) + where_part + limit_part + ")", where_ps)
+}
+
 # ---- SQL building (pure) ------------------------------------------
 
 fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
-  let tname := sql_quote(q.repo.table)
-  let base  := "SELECT * FROM " + tname
+  let tname  := sql_quote(q.repo.table)
+  let base   := "SELECT * FROM " + tname
   let where_result := p.render_where(q.filters)
-  let where_sql    := match where_result { (s, _) => s }
+  let where_sql    := match where_result { (s2, _) => s2 }
   let where_params := match where_result { (_, ps) => ps }
   let with_where := if str.is_empty(where_sql) { base }
     else { base + " WHERE " + where_sql }
@@ -182,10 +201,10 @@ fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
 }
 
 fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
-  let tname := sql_quote(q.repo.table)
-  let base  := "SELECT COUNT(*) AS count FROM " + tname
+  let tname  := sql_quote(q.repo.table)
+  let base   := "SELECT COUNT(*) AS count FROM " + tname
   let where_result := p.render_where(q.filters)
-  let where_sql    := match where_result { (s, _) => s }
+  let where_sql    := match where_result { (s2, _) => s2 }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
     else { base + " WHERE " + where_sql }
@@ -219,7 +238,7 @@ fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
   })
   let base := "UPDATE " + tname + " SET " + str.join(set_parts, ", ")
   let where_result := p.render_where(q.filters)
-  let where_sql    := match where_result { (s, _) => s }
+  let where_sql    := match where_result { (s2, _) => s2 }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
     else { base + " WHERE " + where_sql }
@@ -227,10 +246,10 @@ fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
 }
 
 fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
-  let tname := sql_quote(q.repo.table)
-  let base  := "DELETE FROM " + tname
+  let tname  := sql_quote(q.repo.table)
+  let base   := "DELETE FROM " + tname
   let where_result := p.render_where(q.filters)
-  let where_sql    := match where_result { (s, _) => s }
+  let where_sql    := match where_result { (s2, _) => s2 }
   let where_params := match where_result { (_, ps) => ps }
   let final_sql := if str.is_empty(where_sql) { base }
     else { base + " WHERE " + where_sql }
@@ -278,9 +297,6 @@ fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
 }
 
 # ---- Row-to-JSON bridge -------------------------------------------
-# Wraps SELECT/INSERT with json_object (SQLite) or json_build_object
-# (Postgres) so sql.query decodes a single _j :: Str column instead
-# of a structural record per field.
 
 fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
   let pairs := list.fold(fields, [],
@@ -308,7 +324,6 @@ fn build_insert_returning_json[T](q :: InsertQuery[T], dialect :: conn.Dialect) 
 }
 
 # ---- Dialect-aware placeholder numbering --------------------------
-# build_* always emits ? markers. Call for_dialect before execution.
 
 fn for_dialect(q :: SqlQuery, dialect :: conn.Dialect) -> SqlQuery {
   match dialect {
@@ -321,15 +336,15 @@ fn number_placeholders(raw :: Str) -> Str {
   let parts := str.split(raw, "?")
   if list.len(parts) <= 1 { raw }
   else {
-    let first := match list.head(parts) { None => "", Some(s) => s }
+    let first := match list.head(parts) { None => "", Some(s2) => s2 }
     let rest  := list.tail(parts)
     let result := list.fold(rest, (first, 1),
       fn (acc :: (Str, Int), part :: Str) -> (Str, Int) {
-        let s := match acc { (s2, _) => s2 }
-        let i := match acc { (_, i2) => i2 }
-        (s + "$" + int.to_str(i) + part, i + 1)
+        let s2 := match acc { (s3, _) => s3 }
+        let i  := match acc { (_, i2) => i2 }
+        (s2 + "$" + int.to_str(i) + part, i + 1)
       })
-    match result { (s, _) => s }
+    match result { (s2, _) => s2 }
   }
 }
 
@@ -337,7 +352,7 @@ fn number_placeholders(raw :: Str) -> Str {
 
 fn param_to_sql(param :: p.Param) -> sql.SqlParam {
   match param {
-    PStr(s)   => PStr(s),
+    PStr(s2)  => PStr(s2),
     PInt(n)   => PInt(n),
     PFloat(x) => PFloat(x),
     PBool(b)  => PBool(b),
@@ -524,7 +539,7 @@ fn json_to_param(j :: Option[jv.Json]) -> p.Param {
       JBool(b)  => PBool(b),
       JInt(n)   => PInt(n),
       JFloat(x) => PFloat(x),
-      JStr(s)   => PStr(s),
+      JStr(s2)  => PStr(s2),
       _         => PStr(jv.stringify(v)),
     },
   }
