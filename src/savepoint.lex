@@ -6,9 +6,9 @@ import "./error"      as dbe
 # Nested transaction via SQL SAVEPOINT / RELEASE / ROLLBACK TO.
 # Safe to call inside an existing transaction[A] block.
 fn savepoint[A](
-  db   :: conn.Db,
+  db   :: conn.ConnDb,
   name :: Str,
-  body :: (conn.Db) -> [sql] Result[A, dbe.DbErr],
+  body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr],
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "SAVEPOINT " + name, []) {
     Err(e) => Err(DbTransactionFailed("SAVEPOINT " + name + " failed: " + e)),

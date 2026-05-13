@@ -5,17 +5,17 @@ import "./error" as e
 # DbPostgres/DbSqlite avoids constructor collision with lex-schema sdk's SqlDialect.
 type Dialect = DbPostgres | DbSqlite
 
-type Db = {
+type ConnDb = {
   dialect :: Dialect,
-  handle  :: sql.Db,
+  handle  :: Db,
 }
 
-type Tx = {
+type ConnTx = {
   dialect :: Dialect,
-  handle  :: sql.Db,
+  handle  :: Db,
 }
 
-fn dialect(db :: Db) -> Dialect { db.dialect }
+fn dialect(db :: ConnDb) -> Dialect { db.dialect }
 
 fn dialect_name(d :: Dialect) -> Str {
   match d {
@@ -24,7 +24,7 @@ fn dialect_name(d :: Dialect) -> Str {
   }
 }
 
-fn open(url :: Str) -> [sql, fs_write] Result[Db, e.DbErr] {
+fn open(url :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   let d := if str_starts_with(url, "postgres://") or str_starts_with(url, "postgresql://") {
     DbPostgres } else { DbSqlite }
   match sql.open(url) {
@@ -33,25 +33,25 @@ fn open(url :: Str) -> [sql, fs_write] Result[Db, e.DbErr] {
   }
 }
 
-fn connect_postgres(url :: Str) -> [sql, fs_write] Result[Db, e.DbErr] {
+fn connect_postgres(url :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   match sql.open(url) {
     Err(msg) => Err(DbConnFailed(msg)),
     Ok(h)    => Ok({ dialect: DbPostgres, handle: h }),
   }
 }
 
-fn connect_sqlite(path :: Str) -> [sql, fs_write] Result[Db, e.DbErr] {
+fn connect_sqlite(path :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   match sql.open(path) {
     Err(msg) => Err(DbConnFailed(msg)),
     Ok(h)    => Ok({ dialect: DbSqlite, handle: h }),
   }
 }
 
-fn close(db :: Db) -> [sql] Unit {
+fn close(db :: ConnDb) -> [sql] Unit {
   sql.close(db.handle)
 }
 
-fn db_to_tx(db :: Db) -> Tx {
+fn db_to_tx(db :: ConnDb) -> ConnTx {
   { dialect: db.dialect, handle: db.handle }
 }
 

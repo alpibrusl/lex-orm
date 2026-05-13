@@ -11,153 +11,141 @@ import "./predicate"  as p
 import "./connection" as conn
 import "./error"      as dbe
 
-type Repo[T] = {
+# RepoSchema is non-generic: just schema + table name.
+# Callers pass a decode function explicitly to run_* functions.
+type RepoSchema = {
   schema :: s.ModelSchema,
   table  :: Str,
-  decode :: (jv.Json) -> Result[T, se.Errors],
 }
 
-fn for_schema[T](
-  schema :: s.ModelSchema,
-  decode :: (jv.Json) -> Result[T, se.Errors]
-) -> Repo[T] {
-  { schema: schema, table: sql_ident(schema.title), decode: decode }
+fn for_schema(schema :: s.ModelSchema) -> RepoSchema {
+  { schema: schema, table: sql_ident(schema.title) }
 }
 
-fn with_table[T](repo :: Repo[T], table :: Str) -> Repo[T] {
-  { schema: repo.schema, table: table, decode: repo.decode }
+fn with_table(repo :: RepoSchema, table :: Str) -> RepoSchema {
+  { schema: repo.schema, table: table }
 }
 
 type Order = Asc | Desc
 
-type SelectQuery[T] = {
-  repo     :: Repo[T],
+# All query types are non-generic record aliases (non-generic aliases work in lex 0.9.1).
+type SelectQuery = {
+  repo     :: RepoSchema,
   filters  :: List[p.Predicate],
   ordering :: List[(Str, Order)],
   limit_n  :: Option[Int],
   offset_n :: Option[Int],
 }
 
-type InsertQuery[T] = {
-  repo  :: Repo[T],
+type InsertQuery = {
+  repo  :: RepoSchema,
   value :: jv.Json,
 }
 
-type UpdateQuery[T] = {
-  repo    :: Repo[T],
-  sets    :: List[(Str, p.Param)],
+type UpdateQuery = {
+  repo    :: RepoSchema,
+  sets    :: List[(Str, SqlParam)],
   filters :: List[p.Predicate],
 }
 
-type DeleteQuery[T] = {
-  repo    :: Repo[T],
+type DeleteQuery = {
+  repo    :: RepoSchema,
   filters :: List[p.Predicate],
 }
 
-type UpsertQuery[T] = {
-  repo       :: Repo[T],
+type UpsertQuery = {
+  repo       :: RepoSchema,
   value      :: jv.Json,
   conflict   :: List[Str],
-  update_set :: List[(Str, p.Param)],
+  update_set :: List[(Str, SqlParam)],
 }
 
-type BulkInsertQuery[T] = {
-  repo   :: Repo[T],
+type BulkInsertQuery = {
+  repo   :: RepoSchema,
   values :: List[jv.Json],
-}
-
-type Page[T] = {
-  items    :: List[T],
-  total    :: Int,
-  page     :: Int,
-  per_page :: Int,
 }
 
 type SqlQuery = {
   sql    :: Str,
-  params :: List[p.Param],
+  params :: List[SqlParam],
 }
 
 # ---- Query builders (pure) ----------------------------------------
 
-fn select[T](repo :: Repo[T]) -> SelectQuery[T] {
+fn select(repo :: RepoSchema) -> SelectQuery {
   { repo: repo, filters: [], ordering: [], limit_n: None, offset_n: None }
 }
 
-fn where_clause[T](q :: SelectQuery[T], pred :: p.Predicate) -> SelectQuery[T] {
+fn where_clause(q :: SelectQuery, pred :: p.Predicate) -> SelectQuery {
   { repo: q.repo, filters: list.concat(q.filters, [pred]),
     ordering: q.ordering, limit_n: q.limit_n, offset_n: q.offset_n }
 }
 
-fn order_by[T](q :: SelectQuery[T], col :: Str, dir :: Order) -> SelectQuery[T] {
+fn order_by(q :: SelectQuery, col :: Str, dir :: Order) -> SelectQuery {
   { repo: q.repo, filters: q.filters,
     ordering: list.concat(q.ordering, [(col, dir)]),
     limit_n: q.limit_n, offset_n: q.offset_n }
 }
 
-fn limit[T](q :: SelectQuery[T], n :: Int) -> SelectQuery[T] {
+fn limit(q :: SelectQuery, n :: Int) -> SelectQuery {
   { repo: q.repo, filters: q.filters, ordering: q.ordering,
     limit_n: Some(n), offset_n: q.offset_n }
 }
 
-fn offset[T](q :: SelectQuery[T], n :: Int) -> SelectQuery[T] {
+fn offset(q :: SelectQuery, n :: Int) -> SelectQuery {
   { repo: q.repo, filters: q.filters, ordering: q.ordering,
     limit_n: q.limit_n, offset_n: Some(n) }
 }
 
-fn paginate[T](q :: SelectQuery[T], page :: Int, per_page :: Int) -> SelectQuery[T] {
+fn paginate(q :: SelectQuery, page :: Int, per_page :: Int) -> SelectQuery {
   let offs := (page - 1) * per_page
   offset(limit(q, per_page), offs)
 }
 
-fn insert[T](repo :: Repo[T], value :: jv.Json) -> InsertQuery[T] {
+fn insert(repo :: RepoSchema, value :: jv.Json) -> InsertQuery {
   { repo: repo, value: value }
 }
 
-fn update[T](repo :: Repo[T]) -> UpdateQuery[T] {
+fn update(repo :: RepoSchema) -> UpdateQuery {
   { repo: repo, sets: [], filters: [] }
 }
 
-fn set_col[T](q :: UpdateQuery[T], col :: Str, v :: p.Param) -> UpdateQuery[T] {
+fn set_col(q :: UpdateQuery, col :: Str, v :: SqlParam) -> UpdateQuery {
   { repo: q.repo, sets: list.concat(q.sets, [(col, v)]), filters: q.filters }
 }
 
-fn where_update[T](q :: UpdateQuery[T], pred :: p.Predicate) -> UpdateQuery[T] {
+fn where_update(q :: UpdateQuery, pred :: p.Predicate) -> UpdateQuery {
   { repo: q.repo, sets: q.sets, filters: list.concat(q.filters, [pred]) }
 }
 
-fn delete_from[T](repo :: Repo[T]) -> DeleteQuery[T] {
+fn delete_from(repo :: RepoSchema) -> DeleteQuery {
   { repo: repo, filters: [] }
 }
 
-fn where_delete[T](q :: DeleteQuery[T], pred :: p.Predicate) -> DeleteQuery[T] {
+fn where_delete(q :: DeleteQuery, pred :: p.Predicate) -> DeleteQuery {
   { repo: q.repo, filters: list.concat(q.filters, [pred]) }
 }
 
-fn upsert[T](repo :: Repo[T], value :: jv.Json, conflict_cols :: List[Str]) -> UpsertQuery[T] {
+fn upsert(repo :: RepoSchema, value :: jv.Json, conflict_cols :: List[Str]) -> UpsertQuery {
   { repo: repo, value: value, conflict: conflict_cols, update_set: [] }
 }
 
-fn on_conflict_update[T](q :: UpsertQuery[T], col :: Str, v :: p.Param) -> UpsertQuery[T] {
+fn on_conflict_update(q :: UpsertQuery, col :: Str, v :: SqlParam) -> UpsertQuery {
   { repo: q.repo, value: q.value, conflict: q.conflict,
     update_set: list.concat(q.update_set, [(col, v)]) }
 }
 
-fn bulk_insert[T](repo :: Repo[T], values :: List[jv.Json]) -> BulkInsertQuery[T] {
+fn bulk_insert(repo :: RepoSchema, values :: List[jv.Json]) -> BulkInsertQuery {
   { repo: repo, values: values }
 }
 
-fn page_result[T](items :: List[T], total :: Int, page :: Int, per_page :: Int) -> Page[T] {
-  { items: items, total: total, page: page, per_page: per_page }
-}
-
 # Stamp updated_at on an update query. Caller provides the timestamp string.
-fn touch[T](upd :: UpdateQuery[T], now :: Str) -> UpdateQuery[T] {
+fn touch(upd :: UpdateQuery, now :: Str) -> UpdateQuery {
   set_col(upd, "updated_at", PStr(now))
 }
 
 # Build an EXISTS (...) predicate from a sub-select.
-fn exists_subquery[T](sub :: SelectQuery[T]) -> p.Predicate {
+fn exists_subquery(sub :: SelectQuery) -> p.Predicate {
   let wr         := p.render_where(sub.filters)
   let where_sql  := match wr { (s2, _) => s2 }
   let where_ps   := match wr { (_, ps) => ps }
@@ -172,7 +160,7 @@ fn exists_subquery[T](sub :: SelectQuery[T]) -> p.Predicate {
 
 # ---- SQL building (pure) ------------------------------------------
 
-fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
+fn build_select(q :: SelectQuery) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let base   := "SELECT * FROM " + tname
   let where_result := p.render_where(q.filters)
@@ -200,7 +188,7 @@ fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
-fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
+fn build_count(q :: SelectQuery) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let base   := "SELECT COUNT(*) AS count FROM " + tname
   let where_result := p.render_where(q.filters)
@@ -211,12 +199,12 @@ fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
-fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
+fn build_insert(q :: InsertQuery) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let fields := q.repo.schema.fields
   let col_names    := list.map(fields, fn (f :: s.Field) -> Str { sql_quote(f.name) })
   let placeholders := list.map(fields, fn (_f :: s.Field) -> Str { "?" })
-  let params       := list.map(fields, fn (f :: s.Field) -> p.Param {
+  let params       := list.map(fields, fn (f :: s.Field) -> SqlParam {
     json_to_param(jv.get_field(q.value, f.name))
   })
   let sql_str :=
@@ -227,13 +215,13 @@ fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
   { sql: sql_str, params: params }
 }
 
-fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
+fn build_update(q :: UpdateQuery) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
-  let set_parts := list.map(q.sets, fn (pair :: (Str, p.Param)) -> Str {
+  let set_parts := list.map(q.sets, fn (pair :: (Str, SqlParam)) -> Str {
     let col := match pair { (c, _) => c }
     sql_quote(col) + " = ?"
   })
-  let set_params := list.map(q.sets, fn (pair :: (Str, p.Param)) -> p.Param {
+  let set_params := list.map(q.sets, fn (pair :: (Str, SqlParam)) -> SqlParam {
     match pair { (_, v) => v }
   })
   let base := "UPDATE " + tname + " SET " + str.join(set_parts, ", ")
@@ -245,7 +233,7 @@ fn build_update[T](q :: UpdateQuery[T]) -> SqlQuery {
   { sql: final_sql, params: list.concat(set_params, where_params) }
 }
 
-fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
+fn build_delete(q :: DeleteQuery) -> SqlQuery {
   let tname  := sql_quote(q.repo.table)
   let base   := "DELETE FROM " + tname
   let where_result := p.render_where(q.filters)
@@ -256,36 +244,38 @@ fn build_delete[T](q :: DeleteQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
-fn build_upsert[T](q :: UpsertQuery[T]) -> SqlQuery {
+fn build_upsert(q :: UpsertQuery) -> SqlQuery {
   let base          := build_insert({ repo: q.repo, value: q.value })
   let conflict_str  := str.join(list.map(q.conflict, sql_quote), ", ")
-  let update_params := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> p.Param {
+  let update_params := list.map(q.update_set, fn (pair :: (Str, SqlParam)) -> SqlParam {
     match pair { (_, v) => v }
   })
   let conflict_clause :=
     if list.is_empty(q.conflict) {
       " ON CONFLICT DO NOTHING"
-    } else if list.is_empty(q.update_set) {
-      " ON CONFLICT (" + conflict_str + ") DO NOTHING"
     } else {
-      let updates := list.map(q.update_set, fn (pair :: (Str, p.Param)) -> Str {
-        let qc := sql_quote(match pair { (c, _) => c })
-        qc + " = EXCLUDED." + qc
-      })
-      " ON CONFLICT (" + conflict_str + ") DO UPDATE SET " + str.join(updates, ", ")
+      if list.is_empty(q.update_set) {
+        " ON CONFLICT (" + conflict_str + ") DO NOTHING"
+      } else {
+        let updates := list.map(q.update_set, fn (pair :: (Str, SqlParam)) -> Str {
+          let qc := sql_quote(match pair { (c, _) => c })
+          qc + " = EXCLUDED." + qc
+        })
+        " ON CONFLICT (" + conflict_str + ") DO UPDATE SET " + str.join(updates, ", ")
+      }
     }
   { sql: base.sql + conflict_clause, params: list.concat(base.params, update_params) }
 }
 
-fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
+fn build_bulk_insert(q :: BulkInsertQuery) -> SqlQuery {
   let tname     := sql_quote(q.repo.table)
   let fields    := q.repo.schema.fields
   let col_names := list.map(fields, fn (f :: s.Field) -> Str { sql_quote(f.name) })
   let row_ph    := "(" + str.join(list.map(fields, fn (_f :: s.Field) -> Str { "?" }), ", ") + ")"
   let all_rows  := list.map(q.values, fn (_v :: jv.Json) -> Str { row_ph })
   let all_params := list.fold(q.values, [],
-    fn (acc :: List[p.Param], v :: jv.Json) -> List[p.Param] {
-      list.concat(acc, list.map(fields, fn (f :: s.Field) -> p.Param {
+    fn (acc :: List[SqlParam], v :: jv.Json) -> List[SqlParam] {
+      list.concat(acc, list.map(fields, fn (f :: s.Field) -> SqlParam {
         json_to_param(jv.get_field(v, f.name))
       }))
     })
@@ -307,7 +297,7 @@ fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
   json_fn + "(" + str.join(pairs, ", ") + ") AS _j"
 }
 
-fn build_select_json[T](q :: SelectQuery[T], dialect :: conn.Dialect) -> SqlQuery {
+fn build_select_json(q :: SelectQuery, dialect :: conn.Dialect) -> SqlQuery {
   let tname     := sql_quote(q.repo.table)
   let json_expr := json_agg_expr(q.repo.schema.fields, dialect)
   let base      := "SELECT " + json_expr + " FROM " + tname
@@ -317,7 +307,7 @@ fn build_select_json[T](q :: SelectQuery[T], dialect :: conn.Dialect) -> SqlQuer
   { sql: base + suffix, params: full.params }
 }
 
-fn build_insert_returning_json[T](q :: InsertQuery[T], dialect :: conn.Dialect) -> SqlQuery {
+fn build_insert_returning_json(q :: InsertQuery, dialect :: conn.Dialect) -> SqlQuery {
   let base      := build_insert(q)
   let json_expr := json_agg_expr(q.repo.schema.fields, dialect)
   { sql: base.sql + " RETURNING " + json_expr, params: base.params }
@@ -348,17 +338,7 @@ fn number_placeholders(raw :: Str) -> Str {
   }
 }
 
-# ---- Param / row conversion ---------------------------------------
-
-fn param_to_sql(param :: p.Param) -> sql.SqlParam {
-  match param {
-    PStr(s2)  => PStr(s2),
-    PInt(n)   => PInt(n),
-    PFloat(x) => PFloat(x),
-    PBool(b)  => PBool(b),
-    PNull     => PNull,
-  }
-}
+# ---- Row decoding -------------------------------------------------
 
 fn decode_rows[T](
   rows   :: List[{ _j :: Str }],
@@ -383,20 +363,22 @@ fn decode_rows[T](
 
 # ---- Runtime execution --------------------------------------------
 
-fn run_select[T](q :: SelectQuery[T], db :: conn.Db) -> [sql] Result[List[T], dbe.DbErr] {
+fn run_select[T](
+  q      :: SelectQuery,
+  decode :: (jv.Json) -> Result[T, se.Errors],
+  db     :: conn.ConnDb
+) -> [sql] Result[List[T], dbe.DbErr] {
   let sq         := for_dialect(build_select_json(q, db.dialect), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sql_params)
+  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(DbQueryFailed(e)),
-    Ok(rows) => decode_rows(rows, q.repo.decode),
+    Ok(rows) => decode_rows(rows, decode),
   }
 }
 
-fn run_count[T](q :: SelectQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
+fn run_count(q :: SelectQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq         := for_dialect(build_count(q), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sql_params)
+  let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(DbQueryFailed(e)),
     Ok(rows) => match list.head(rows) {
@@ -406,14 +388,17 @@ fn run_count[T](q :: SelectQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbE
   }
 }
 
-fn run_insert[T](q :: InsertQuery[T], db :: conn.Db) -> [sql] Result[T, dbe.DbErr] {
+fn run_insert[T](
+  q      :: InsertQuery,
+  decode :: (jv.Json) -> Result[T, se.Errors],
+  db     :: conn.ConnDb
+) -> [sql] Result[T, dbe.DbErr] {
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sql_params)
+  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(DbQueryFailed(e)),
     Ok(rows) =>
-      match decode_rows(rows, q.repo.decode) {
+      match decode_rows(rows, decode) {
         Err(e)    => Err(e),
         Ok(items) => match list.head(items) {
           None    => Err(DbQueryFailed("INSERT returned no rows")),
@@ -423,55 +408,54 @@ fn run_insert[T](q :: InsertQuery[T], db :: conn.Db) -> [sql] Result[T, dbe.DbEr
   }
 }
 
-fn run_insert_returning[T](q :: InsertQuery[T], db :: conn.Db) -> [sql] Result[List[T], dbe.DbErr] {
+fn run_insert_returning[T](
+  q      :: InsertQuery,
+  decode :: (jv.Json) -> Result[T, se.Errors],
+  db     :: conn.ConnDb
+) -> [sql] Result[List[T], dbe.DbErr] {
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sql_params)
+  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(DbQueryFailed(e)),
-    Ok(rows) => decode_rows(rows, q.repo.decode),
+    Ok(rows) => decode_rows(rows, decode),
   }
 }
 
-fn run_update[T](q :: UpdateQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_update(q), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  match sql.exec(db.handle, sq.sql, sql_params) {
+fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
+  let sq := for_dialect(build_update(q), db.dialect)
+  match sql.exec(db.handle, sq.sql, sq.params) {
     Err(e) => Err(DbQueryFailed(e)),
     Ok(n)  => Ok(n),
   }
 }
 
-fn run_delete[T](q :: DeleteQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_delete(q), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  match sql.exec(db.handle, sq.sql, sql_params) {
+fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
+  let sq := for_dialect(build_delete(q), db.dialect)
+  match sql.exec(db.handle, sq.sql, sq.params) {
     Err(e) => Err(DbQueryFailed(e)),
     Ok(n)  => Ok(n),
   }
 }
 
-fn run_upsert[T](q :: UpsertQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_upsert(q), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  match sql.exec(db.handle, sq.sql, sql_params) {
+fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
+  let sq := for_dialect(build_upsert(q), db.dialect)
+  match sql.exec(db.handle, sq.sql, sq.params) {
     Err(e) => Err(DbQueryFailed(e)),
     Ok(n)  => Ok(n),
   }
 }
 
-fn run_bulk_insert[T](q :: BulkInsertQuery[T], db :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_bulk_insert(q), db.dialect)
-  let sql_params := list.map(sq.params, param_to_sql)
-  match sql.exec(db.handle, sq.sql, sql_params) {
+fn run_bulk_insert(q :: BulkInsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
+  let sq := for_dialect(build_bulk_insert(q), db.dialect)
+  match sql.exec(db.handle, sq.sql, sq.params) {
     Err(e) => Err(DbQueryFailed(e)),
     Ok(n)  => Ok(n),
   }
 }
 
 fn transaction[A](
-  db   :: conn.Db,
-  body :: (conn.Db) -> [sql] Result[A, dbe.DbErr]
+  db   :: conn.ConnDb,
+  body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr]
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "BEGIN", []) {
     Err(e) => Err(DbTransactionFailed("BEGIN failed: " + e)),
@@ -531,14 +515,14 @@ fn snake_split_at(
 fn is_upper(c :: Str) -> Bool { str.to_upper(c) == c and str.to_lower(c) != c }
 fn is_lower(c :: Str) -> Bool { str.to_lower(c) == c and str.to_upper(c) != c }
 
-fn json_to_param(j :: Option[jv.Json]) -> p.Param {
+fn json_to_param(j :: Option[jv.Json]) -> SqlParam {
   match j {
     None    => PNull,
     Some(v) => match v {
       JNull     => PNull,
-      JBool(b)  => PBool(b),
+      JBool(b)  => if b { PInt(1) } else { PInt(0) },
       JInt(n)   => PInt(n),
-      JFloat(x) => PFloat(x),
+      JFloat(x) => PStr(jv.stringify(JFloat(x))),
       JStr(s2)  => PStr(s2),
       _         => PStr(jv.stringify(v)),
     },
