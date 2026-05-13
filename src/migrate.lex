@@ -50,10 +50,12 @@ fn diff(old :: s.ModelSchema, new :: s.ModelSchema) -> List[DdlChange] {
         None     => acc,
         Some(of) =>
           if of.required == nf.required { acc }
-          else if nf.required {
-            list.concat(acc, [SetNotNull(nf.name)])
-          } else {
-            list.concat(acc, [SetNullable(nf.name)])
+          else {
+            if nf.required {
+              list.concat(acc, [SetNotNull(nf.name)])
+            } else {
+              list.concat(acc, [SetNullable(nf.name)])
+            }
           },
       }
     })
@@ -92,10 +94,11 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
         DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " SET NOT NULL",
         DbSqlite   => "-- SQLite: rebuild table to add NOT NULL on " + name,
       },
-    AddIndex(idx) =>
+    AddIndex(idx) => {
       let unique_pfx := if idx.unique { "UNIQUE " } else { "" }
       "CREATE " + unique_pfx + "INDEX IF NOT EXISTS " + sql_quote(idx.name) +
-      " ON " + qt + " (" + str.join(list.map(idx.columns, sql_quote), ", ") + ")",
+      " ON " + qt + " (" + str.join(list.map(idx.columns, sql_quote), ", ") + ")"
+    },
     DropIndex(name) =>
       "DROP INDEX IF EXISTS " + sql_quote(name),
   }
@@ -125,7 +128,7 @@ fn migrations_table_ddl(dialect :: conn.Dialect) -> Str {
 
 # Apply pending migrations and record each version in lex_schema_migrations.
 fn apply(
-  db       :: conn.Db,
+  db       :: conn.ConnDb,
   current  :: Int,
   versions :: List[SchemaVersion]
 ) -> [sql] Result[Int, dbe.DbErr] {
@@ -141,7 +144,7 @@ fn apply(
 }
 
 fn run_pending(
-  db         :: conn.Db,
+  db         :: conn.ConnDb,
   all_sorted :: List[SchemaVersion],
   pending    :: List[SchemaVersion],
   applied    :: Int
@@ -176,7 +179,7 @@ fn run_pending(
 
 # Roll back the n most-recently applied versions.
 fn rollback(
-  db       :: conn.Db,
+  db       :: conn.ConnDb,
   current  :: Int,
   versions :: List[SchemaVersion],
   n        :: Int
@@ -187,7 +190,7 @@ fn rollback(
 }
 
 fn rollback_pending(
-  db         :: conn.Db,
+  db         :: conn.ConnDb,
   all_sorted :: List[SchemaVersion],
   to_undo    :: List[SchemaVersion],
   count      :: Int
@@ -259,9 +262,9 @@ fn schema_before(sorted :: List[SchemaVersion], version :: Int) -> Option[s.Mode
   match prev { None => None, Some(sv) => Some(sv.schema) }
 }
 
-fn exec_stmts(db :: conn.Db, stmts :: List[Str]) -> [sql] Result[Unit, dbe.DbErr] {
+fn exec_stmts(db :: conn.ConnDb, stmts :: List[Str]) -> [sql] Result[Unit, dbe.DbErr] {
   list.fold(stmts, Ok(()),
-    fn (acc :: Result[Unit, dbe.DbErr], stmt :: Str) -> Result[Unit, dbe.DbErr] {
+    fn (acc :: Result[Unit, dbe.DbErr], stmt :: Str) -> [sql] Result[Unit, dbe.DbErr] {
       match acc {
         Err(e) => Err(e),
         Ok(_)  =>

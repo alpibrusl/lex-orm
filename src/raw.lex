@@ -4,7 +4,6 @@ import "std.sql"  as sql
 import "lex-schema/json_value" as jv
 import "lex-schema/error"      as se
 
-import "./predicate"  as p
 import "./query"      as q
 import "./connection" as conn
 import "./error"      as dbe
@@ -13,12 +12,11 @@ import "./error"      as dbe
 # Returns the number of rows affected.
 fn exec_raw(
   sql_str :: Str,
-  params  :: List[p.Param],
-  db      :: conn.Db,
+  params  :: List[SqlParam],
+  db      :: conn.ConnDb,
 ) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
-  let sql_params := list.map(sq.params, q.param_to_sql)
-  match sql.exec(db.handle, sq.sql, sql_params) {
+  let sq := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
+  match sql.exec(db.handle, sq.sql, sq.params) {
     Err(e) => Err(DbQueryFailed(e)),
     Ok(n)  => Ok(n),
   }
@@ -29,13 +27,12 @@ fn exec_raw(
 # e.g.:  SELECT json_object('id', id, 'name', name) AS _j FROM users WHERE ...
 fn query_raw[R](
   sql_str :: Str,
-  params  :: List[p.Param],
-  db      :: conn.Db,
+  params  :: List[SqlParam],
+  db      :: conn.ConnDb,
   decode  :: (jv.Json) -> Result[R, se.Errors],
 ) -> [sql] Result[List[R], dbe.DbErr] {
-  let sq         := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
-  let sql_params := list.map(sq.params, q.param_to_sql)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sql_params)
+  let sq  := q.for_dialect({ sql: sql_str, params: params }, db.dialect)
+  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(DbQueryFailed(e)),
     Ok(rows) =>
@@ -65,7 +62,7 @@ type ColumnInfo = {
 }
 
 # List all user-facing table names in the database.
-fn introspect_tables(db :: conn.Db) -> [sql] Result[List[Str], dbe.DbErr] {
+fn introspect_tables(db :: conn.ConnDb) -> [sql] Result[List[Str], dbe.DbErr] {
   let sql_str := match db.dialect {
     DbPostgres =>
       "SELECT table_name AS name FROM information_schema.tables " +
@@ -83,10 +80,10 @@ fn introspect_tables(db :: conn.Db) -> [sql] Result[List[Str], dbe.DbErr] {
 
 # List columns (name + SQL type) for a given table.
 fn introspect_columns(
-  db    :: conn.Db,
+  db    :: conn.ConnDb,
   table :: Str,
 ) -> [sql] Result[List[ColumnInfo], dbe.DbErr] {
-  let param := [q.param_to_sql(PStr(table))]
+  let param := [PStr(table)]
   let raw :: Result[List[{ name :: Str, data_type :: Str }], Str] :=
     match db.dialect {
       DbPostgres =>
