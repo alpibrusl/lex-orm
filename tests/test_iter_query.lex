@@ -5,6 +5,9 @@
 # the builder produces the expected SQL, matching the existing
 # test_query.lex pattern.
 
+import "std.str"  as str
+import "std.list" as list
+
 import "../src/query"     as q
 import "../src/predicate" as p
 
