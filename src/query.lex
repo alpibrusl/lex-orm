@@ -372,7 +372,10 @@ fn run_select[T](
   let sq         := for_dialect(build_select_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
@@ -381,7 +384,10 @@ fn run_count(q :: SelectQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr
   let sq         := for_dialect(build_count(q), db.dialect)
   let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => match list.head(rows) {
       None    => Ok(0),
       Some(r) => Ok(r.count),
@@ -397,7 +403,10 @@ fn run_insert[T](
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) =>
       match decode_rows(rows, decode) {
         Err(e)    => Err(e),
@@ -417,7 +426,10 @@ fn run_insert_returning[T](
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
@@ -425,7 +437,10 @@ fn run_insert_returning[T](
 fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_update(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -433,7 +448,10 @@ fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_delete(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -441,7 +459,10 @@ fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_upsert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -449,7 +470,10 @@ fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_bulk_insert(q :: BulkInsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_bulk_insert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -487,7 +511,7 @@ fn transaction[A](
   body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr]
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "BEGIN", []) {
-    Err(e) => Err(dbe.sql_error(e.code, "BEGIN failed: " + e.detail)),
+    Err(e) => Err(dbe.sql_error(match e.code { None => "" , Some(c) => c }, "BEGIN failed: " + e.message)),
     Ok(_)  =>
       match body(db) {
         Err(e) => {
@@ -496,7 +520,7 @@ fn transaction[A](
         },
         Ok(v) =>
           match sql.exec(db.handle, "COMMIT", []) {
-            Err(e) => Err(dbe.sql_error(e.code, "COMMIT failed: " + e.detail)),
+            Err(e) => Err(dbe.sql_error(match e.code { None => "" , Some(c) => c }, "COMMIT failed: " + e.message)),
             Ok(_)  => Ok(v),
           },
       },
