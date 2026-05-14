@@ -369,8 +369,8 @@ fn run_select[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[List[T], dbe.DbErr] {
-  let sq         := for_dialect(build_select_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_select_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(dbe.sql_error(
       match e.code { None => "", Some(c) => c },
@@ -381,8 +381,8 @@ fn run_select[T](
 }
 
 fn run_count(q :: SelectQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_count(q), db.dialect)
-  let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_count(q), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(dbe.sql_error(
       match e.code { None => "", Some(c) => c },
@@ -400,8 +400,8 @@ fn run_insert[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[T, dbe.DbErr] {
-  let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(dbe.sql_error(
       match e.code { None => "", Some(c) => c },
@@ -423,8 +423,8 @@ fn run_insert_returning[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[List[T], dbe.DbErr] {
-  let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
     Err(e)   => Err(dbe.sql_error(
       match e.code { None => "", Some(c) => c },
@@ -491,9 +491,9 @@ fn run_select_iter[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Iter[Result[T, dbe.DbErr]] {
-  let plan     := build_select_json(q, db.dialect)
+  let plan      := build_select_json(q, db.dialect)
   let rewritten := for_dialect(plan, db.dialect)
-  let raw_iter := sql.query_iter(db.handle, rewritten.sql, rewritten.params)
+  let raw_iter  := sql.query_iter(db.handle, rewritten.sql, rewritten.params)
   iter.map(raw_iter, fn (row :: { _j :: Str }) -> Result[T, dbe.DbErr] {
     match jv.parse(row._j) {
       Err(pe) => Err(dbe.decode_err(pe.message)),
