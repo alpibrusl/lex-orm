@@ -74,15 +74,11 @@ fn test_select_iter_plan_params_with_where() -> Bool {
 
 # ---- Runner -------------------------------------------------------
 
-fn run_all() -> Int {
-  let cases := [
-    test_select_iter_plan_sql(),
-    test_select_iter_plan_with_where(),
-    test_select_iter_plan_with_limit(),
-    test_select_iter_plan_params_empty(),
-    test_select_iter_plan_params_with_where(),
-  ]
-  list.fold(cases, 0, fn (n :: Int, ok :: Bool) -> Int {
-    if ok { n } else { n + 1 }
-  })
+fn run_all() -> () {
+  assert test_select_iter_plan_sql()
+  assert test_select_iter_plan_with_where()
+  assert test_select_iter_plan_with_limit()
+  assert test_select_iter_plan_params_empty()
+  assert test_select_iter_plan_params_with_where()
+  ()
 }
