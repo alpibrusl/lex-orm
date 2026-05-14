@@ -61,7 +61,7 @@ fn run_all() -> () {
   let sel_multi := q.build_select(
     q.where_clause(
       q.where_clause(q.select(repo_post), p.eq("id", PInt(5))),
-      q.where_clause(q.select(repo_post), p.eq("slug", PStr("hello"))).filters))
+      p.eq("slug", PStr("hello"))))
   assert str.contains(sel_multi.sql, "AND")
   assert list.len(sel_multi.params) == 2
 
