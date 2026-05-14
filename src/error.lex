@@ -5,9 +5,9 @@
 # human-readable string for logging.
 #
 # lex-lang 0.9.2 made std.sql return structured SqlError values
-# ({ code :: Str, detail :: Str }) instead of bare strings.
-# DbSqlError carries those fields verbatim so callers can inspect
-# the SQLSTATE code without parsing a message string.
+# ({ message :: Str, code :: Option[Str], detail :: Option[Str] })
+# instead of bare strings. DbSqlError stores the unwrapped SQLSTATE
+# code (empty string when absent) and the human-readable message.
 
 import "std.str" as str
 
