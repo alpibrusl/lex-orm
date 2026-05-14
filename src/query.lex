@@ -543,24 +543,24 @@ fn sql_ident(name :: Str) -> Str {
   str.to_lower(str.join(split, "_"))
 }
 
-fn snake_split(s :: Str) -> List[Str] {
-  if str.is_empty(s) { [] }
-  else { snake_split_at(s, 1, 0, []) }
+fn snake_split(word :: Str) -> List[Str] {
+  if str.is_empty(word) { [] }
+  else { snake_split_at(word, 1, 0, []) }
 }
 
 fn snake_split_at(
-  s :: Str, i :: Int, start :: Int, acc :: List[Str]
+  word :: Str, i :: Int, start :: Int, acc :: List[Str]
 ) -> List[Str] {
-  let n := str.len(s)
+  let n := str.len(word)
   if i >= n {
-    list.concat(acc, [str.slice(s, start, n)])
+    list.concat(acc, [str.slice(word, start, n)])
   } else {
-    let prev := str.slice(s, i - 1, i)
-    let curr := str.slice(s, i, i + 1)
+    let prev := str.slice(word, i - 1, i)
+    let curr := str.slice(word, i, i + 1)
     if is_lower(prev) and is_upper(curr) {
-      snake_split_at(s, i + 1, i, list.concat(acc, [str.slice(s, start, i)]))
+      snake_split_at(word, i + 1, i, list.concat(acc, [str.slice(word, start, i)]))
     } else {
-      snake_split_at(s, i + 1, start, acc)
+      snake_split_at(word, i + 1, start, acc)
     }
   }
 }
