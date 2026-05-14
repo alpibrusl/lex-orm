@@ -2,6 +2,7 @@ import "std.str"  as str
 import "std.list" as list
 import "std.int"  as int
 import "std.sql"  as sql
+import "std.iter" as iter
 
 import "lex-schema/schema"     as s
 import "lex-schema/json_value" as jv
@@ -350,10 +351,10 @@ fn decode_rows[T](
         Err(e)    => Err(e),
         Ok(items) =>
           match jv.parse(row._j) {
-            Err(pe) => Err(DbDecodeFailed(pe.message)),
+            Err(pe) => Err(dbe.decode_err(pe.message)),
             Ok(j)   =>
               match decode(j) {
-                Err(_)  => Err(DbDecodeFailed("schema validation failed")),
+                Err(_)  => Err(dbe.decode_err("schema validation failed")),
                 Ok(v)   => Ok(list.concat(items, [v])),
               },
           },
@@ -371,7 +372,7 @@ fn run_select[T](
   let sq         := for_dialect(build_select_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
@@ -380,7 +381,7 @@ fn run_count(q :: SelectQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr
   let sq         := for_dialect(build_count(q), db.dialect)
   let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
     Ok(rows) => match list.head(rows) {
       None    => Ok(0),
       Some(r) => Ok(r.count),
@@ -396,12 +397,12 @@ fn run_insert[T](
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
     Ok(rows) =>
       match decode_rows(rows, decode) {
         Err(e)    => Err(e),
         Ok(items) => match list.head(items) {
-          None    => Err(DbQueryFailed("INSERT returned no rows")),
+          None    => Err(dbe.query_err("INSERT returned no rows")),
           Some(v) => Ok(v),
         },
       },
@@ -416,7 +417,7 @@ fn run_insert_returning[T](
   let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(DbQueryFailed(e)),
+    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
@@ -424,7 +425,7 @@ fn run_insert_returning[T](
 fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_update(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(DbQueryFailed(e)),
+    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
     Ok(n)  => Ok(n),
   }
 }
@@ -432,7 +433,7 @@ fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_delete(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(DbQueryFailed(e)),
+    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
     Ok(n)  => Ok(n),
   }
 }
@@ -440,7 +441,7 @@ fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_upsert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(DbQueryFailed(e)),
+    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
     Ok(n)  => Ok(n),
   }
 }
@@ -448,9 +449,37 @@ fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_bulk_insert(q :: BulkInsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_bulk_insert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(DbQueryFailed(e)),
+    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
     Ok(n)  => Ok(n),
   }
+}
+
+# Stream SELECT results as a lazy Iter[T] instead of materializing
+# them all into a List[T]. Use for large tables or export endpoints
+# where you don't want to buffer the full result set in memory.
+#
+# The iterator is lazy: rows are fetched from the cursor on demand.
+# Close the connection only after the iterator is fully consumed.
+#
+# Effect: [sql]
+fn run_select_iter[T](
+  q      :: SelectQuery,
+  decode :: (jv.Json) -> Result[T, se.Errors],
+  db     :: conn.ConnDb
+) -> [sql] Iter[Result[T, dbe.DbErr]] {
+  let plan     := build_select_json(q, db.dialect)
+  let rewritten := for_dialect(plan, db.dialect)
+  let raw_iter := sql.query_iter(db.handle, rewritten.sql, rewritten.params)
+  iter.map(raw_iter, fn (row :: { _j :: Str }) -> Result[T, dbe.DbErr] {
+    match jv.parse(row._j) {
+      Err(pe) => Err(dbe.decode_err(pe.message)),
+      Ok(j)   =>
+        match decode(j) {
+          Err(_)  => Err(dbe.decode_err("schema validation failed")),
+          Ok(v)   => Ok(v),
+        },
+    }
+  })
 }
 
 fn transaction[A](
@@ -458,7 +487,7 @@ fn transaction[A](
   body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr]
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "BEGIN", []) {
-    Err(e) => Err(DbTransactionFailed("BEGIN failed: " + e)),
+    Err(e) => Err(dbe.sql_error(e.code, "BEGIN failed: " + e.detail)),
     Ok(_)  =>
       match body(db) {
         Err(e) => {
@@ -467,7 +496,7 @@ fn transaction[A](
         },
         Ok(v) =>
           match sql.exec(db.handle, "COMMIT", []) {
-            Err(e) => Err(DbTransactionFailed("COMMIT failed: " + e)),
+            Err(e) => Err(dbe.sql_error(e.code, "COMMIT failed: " + e.detail)),
             Ok(_)  => Ok(v),
           },
       },
