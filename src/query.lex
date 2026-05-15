@@ -369,19 +369,25 @@ fn run_select[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[List[T], dbe.DbErr] {
-  let sq         := for_dialect(build_select_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_select_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
 
 fn run_count(q :: SelectQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
-  let sq         := for_dialect(build_count(q), db.dialect)
-  let raw :: Result[List[{ count :: Int }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_count(q), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => match list.head(rows) {
       None    => Ok(0),
       Some(r) => Ok(r.count),
@@ -394,10 +400,13 @@ fn run_insert[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[T, dbe.DbErr] {
-  let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) =>
       match decode_rows(rows, decode) {
         Err(e)    => Err(e),
@@ -414,10 +423,13 @@ fn run_insert_returning[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Result[List[T], dbe.DbErr] {
-  let sq         := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
-  let raw :: Result[List[{ _j :: Str }], Str] := sql.query(db.handle, sq.sql, sq.params)
+  let sq  := for_dialect(build_insert_returning_json(q, db.dialect), db.dialect)
+  let raw := sql.query(db.handle, sq.sql, sq.params)
   match raw {
-    Err(e)   => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e)   => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(rows) => decode_rows(rows, decode),
   }
 }
@@ -425,7 +437,10 @@ fn run_insert_returning[T](
 fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_update(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -433,7 +448,10 @@ fn run_update(q :: UpdateQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_delete(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -441,7 +459,10 @@ fn run_delete(q :: DeleteQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_upsert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -449,7 +470,10 @@ fn run_upsert(q :: UpsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbEr
 fn run_bulk_insert(q :: BulkInsertQuery, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   let sq := for_dialect(build_bulk_insert(q), db.dialect)
   match sql.exec(db.handle, sq.sql, sq.params) {
-    Err(e) => Err(dbe.sql_error(e.code, e.detail)),
+    Err(e) => Err(dbe.sql_error(
+      match e.code { None => "", Some(c) => c },
+      e.message
+    )),
     Ok(n)  => Ok(n),
   }
 }
@@ -467,9 +491,9 @@ fn run_select_iter[T](
   decode :: (jv.Json) -> Result[T, se.Errors],
   db     :: conn.ConnDb
 ) -> [sql] Iter[Result[T, dbe.DbErr]] {
-  let plan     := build_select_json(q, db.dialect)
+  let plan      := build_select_json(q, db.dialect)
   let rewritten := for_dialect(plan, db.dialect)
-  let raw_iter := sql.query_iter(db.handle, rewritten.sql, rewritten.params)
+  let raw_iter  := sql.query_iter(db.handle, rewritten.sql, rewritten.params)
   iter.map(raw_iter, fn (row :: { _j :: Str }) -> Result[T, dbe.DbErr] {
     match jv.parse(row._j) {
       Err(pe) => Err(dbe.decode_err(pe.message)),
@@ -487,7 +511,7 @@ fn transaction[A](
   body :: (conn.ConnDb) -> [sql] Result[A, dbe.DbErr]
 ) -> [sql] Result[A, dbe.DbErr] {
   match sql.exec(db.handle, "BEGIN", []) {
-    Err(e) => Err(dbe.sql_error(e.code, "BEGIN failed: " + e.detail)),
+    Err(e) => Err(dbe.sql_error(match e.code { None => "" , Some(c) => c }, "BEGIN failed: " + e.message)),
     Ok(_)  =>
       match body(db) {
         Err(e) => {
@@ -496,7 +520,7 @@ fn transaction[A](
         },
         Ok(v) =>
           match sql.exec(db.handle, "COMMIT", []) {
-            Err(e) => Err(dbe.sql_error(e.code, "COMMIT failed: " + e.detail)),
+            Err(e) => Err(dbe.sql_error(match e.code { None => "" , Some(c) => c }, "COMMIT failed: " + e.message)),
             Ok(_)  => Ok(v),
           },
       },
@@ -519,24 +543,24 @@ fn sql_ident(name :: Str) -> Str {
   str.to_lower(str.join(split, "_"))
 }
 
-fn snake_split(s :: Str) -> List[Str] {
-  if str.is_empty(s) { [] }
-  else { snake_split_at(s, 1, 0, []) }
+fn snake_split(word :: Str) -> List[Str] {
+  if str.is_empty(word) { [] }
+  else { snake_split_at(word, 1, 0, []) }
 }
 
 fn snake_split_at(
-  s :: Str, i :: Int, start :: Int, acc :: List[Str]
+  word :: Str, i :: Int, start :: Int, acc :: List[Str]
 ) -> List[Str] {
-  let n := str.len(s)
+  let n := str.len(word)
   if i >= n {
-    list.concat(acc, [str.slice(s, start, n)])
+    list.concat(acc, [str.slice(word, start, n)])
   } else {
-    let prev := str.slice(s, i - 1, i)
-    let curr := str.slice(s, i, i + 1)
+    let prev := str.slice(word, i - 1, i)
+    let curr := str.slice(word, i, i + 1)
     if is_lower(prev) and is_upper(curr) {
-      snake_split_at(s, i + 1, i, list.concat(acc, [str.slice(s, start, i)]))
+      snake_split_at(word, i + 1, i, list.concat(acc, [str.slice(word, start, i)]))
     } else {
-      snake_split_at(s, i + 1, start, acc)
+      snake_split_at(word, i + 1, start, acc)
     }
   }
 }

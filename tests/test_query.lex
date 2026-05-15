@@ -1,11 +1,9 @@
 import "std.str"  as str
 import "std.list" as list
-import "std.int"  as int
 
 import "lex-schema/schema"      as s
 import "lex-schema/constraints" as c
 import "lex-schema/json_value"  as jv
-import "lex-schema/error"       as se
 
 import "../src/predicate"  as p
 import "../src/query"      as q
@@ -35,12 +33,10 @@ fn blog_post_schema() -> s.ModelSchema {
   }
 }
 
-fn dummy_decode(j :: jv.Json) -> Result[jv.Json, se.Errors] { Ok(j) }
-
 # lex test convention: run_all :: () -> () — assert on failure.
 fn run_all() -> () {
   # SELECT * FROM "post" (no filters)
-  let repo_post := q.for_schema(post_schema(), dummy_decode)
+  let repo_post := q.for_schema(post_schema())
   let sel_basic := q.build_select(q.select(repo_post))
   assert sel_basic.sql == "SELECT * FROM \"post\""
 
@@ -70,7 +66,7 @@ fn run_all() -> () {
   assert list.len(sel_multi.params) == 2
 
   # PascalCase title => snake_case table name
-  let repo_bp := q.for_schema(blog_post_schema(), dummy_decode)
+  let repo_bp := q.for_schema(blog_post_schema())
   assert repo_bp.table == "blog_post"
 
   # INSERT param count == number of schema fields

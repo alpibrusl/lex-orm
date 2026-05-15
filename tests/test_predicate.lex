@@ -32,7 +32,7 @@ fn run_all() -> () {
   let r_or := p.render_pred(p.or_pred(p.eq("role", PStr("admin")), p.eq("role", PStr("mod"))))
   assert match r_or { (sql, _) => sql } == "(\"role\" = ? OR \"role\" = ?)"
 
-  let r_not := p.render_pred(p.not_pred(p.eq("active", PBool(true))))
+  let r_not := p.render_pred(p.not_pred(p.eq("active", PInt(1))))
   assert match r_not { (sql, _) => sql } == "NOT (\"active\" = ?)"
 
   # render_where list
@@ -57,12 +57,12 @@ fn run_all() -> () {
   # PRaw
   let r_raw := p.render_pred(p.raw_pred(
     "ST_DWithin(location, ST_Point(?, ?), ?)",
-    [PFloat(1.0), PFloat(2.0), PInt(500)]))
+    [PStr("1.0"), PStr("2.0"), PInt(500)]))
   assert match r_raw { (sql, _) => sql } == "ST_DWithin(location, ST_Point(?, ?), ?)"
   assert list.len(match r_raw { (_, ps) => ps }) == 3
 
   # PBetween in render_where — param count
-  let r_combo := p.render_where([p.eq("active", PBool(true)), p.between("score", PInt(10), PInt(100))])
+  let r_combo := p.render_where([p.eq("active", PInt(1)), p.between("score", PInt(10), PInt(100))])
   assert str.contains(match r_combo { (sql, _) => sql }, "BETWEEN")
   assert list.len(match r_combo { (_, ps) => ps }) == 3
 
