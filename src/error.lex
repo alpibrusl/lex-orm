@@ -12,22 +12,31 @@
 import "std.str" as str
 
 # ---- Error ADT ---------------------------------------------------
+type DbErr = DbConnErr(Str) | DbQueryErr(Str) | DbDecodeErr(Str) | DbNotFound | DbConflict(Str) | DbSqlError((Str, Str)) | DbTransactionFailed(Str)
 
-type DbErr =
-    DbConnErr(Str)
-  | DbQueryErr(Str)
-  | DbDecodeErr(Str)
-  | DbNotFound
-  | DbConflict(Str)
-  | DbSqlError(Str, Str)
+fn conn_err(msg :: Str) -> DbErr {
+  DbConnErr(msg)
+}
 
-# ---- Constructors ------------------------------------------------
+fn query_err(msg :: Str) -> DbErr {
+  DbQueryErr(msg)
+}
 
-fn conn_err(msg :: Str)     -> DbErr { DbConnErr(msg) }
-fn query_err(msg :: Str)    -> DbErr { DbQueryErr(msg) }
-fn decode_err(msg :: Str)   -> DbErr { DbDecodeErr(msg) }
-fn not_found()              -> DbErr { DbNotFound }
-fn conflict(msg :: Str)     -> DbErr { DbConflict(msg) }
+fn decode_err(msg :: Str) -> DbErr {
+  DbDecodeErr(msg)
+}
+
+fn not_found() -> DbErr {
+  DbNotFound
+}
+
+fn conflict(msg :: Str) -> DbErr {
+  DbConflict(msg)
+}
+
+fn transaction_failed(msg :: Str) -> DbErr {
+  DbTransactionFailed(msg)
+}
 
 # Wrap a structured SqlError from std.sql (lex 0.9.2+).
 # `code` is the SQLSTATE string (e.g. "23505" for unique violation).
@@ -37,21 +46,19 @@ fn sql_error(code :: Str, detail :: Str) -> DbErr {
 }
 
 # ---- Rendering ---------------------------------------------------
-
 fn message(err :: DbErr) -> Str {
   match err {
-    DbConnErr(msg)     => str.concat("connection error: ", msg),
-    DbQueryErr(msg)    => str.concat("query error: ", msg),
-    DbDecodeErr(msg)   => str.concat("decode error: ", msg),
-    DbNotFound         => "not found",
-    DbConflict(msg)    => str.concat("conflict: ", msg),
-    DbSqlError(code, detail) =>
-      str.concat("sql error [", str.concat(code, str.concat("]: ", detail))),
+    DbConnErr(msg) => str.concat("connection error: ", msg),
+    DbQueryErr(msg) => str.concat("query error: ", msg),
+    DbDecodeErr(msg) => str.concat("decode error: ", msg),
+    DbNotFound => "not found",
+    DbConflict(msg) => str.concat("conflict: ", msg),
+    DbSqlError(code, detail) => str.concat("sql error [", str.concat(code, str.concat("]: ", detail))),
+    DbTransactionFailed(msg) => str.concat("transaction failed: ", msg),
   }
 }
 
 # ---- SQLSTATE helpers --------------------------------------------
-
 # True when the SQLSTATE indicates a unique-constraint violation.
 # Postgres: 23505. SQLite: driver-level "UNIQUE constraint failed".
 fn is_unique_violation(err :: DbErr) -> Bool {
@@ -76,3 +83,12 @@ fn is_serialization_failure(err :: DbErr) -> Bool {
     _ => false,
   }
 }
+
+# True for any transaction-control failure (BEGIN/COMMIT/SAVEPOINT/RELEASE).
+fn is_transaction_failure(err :: DbErr) -> Bool {
+  match err {
+    DbTransactionFailed(_) => true,
+    _ => false,
+  }
+}
+
