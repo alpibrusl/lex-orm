@@ -13,19 +13,22 @@ import "./connection" as conn
 import "./error" as dbe
 
 # A SELECT query prefixed with a single named CTE (WITH clause).
-type CteQuery = { cte_name :: Str, cte_plan :: q.SqlQuery, main :: q.SelectQuery }
+type CteQuery[T] = { cte_name :: Str, cte_plan :: q.SqlQuery, main :: q.SelectQuery[T] }
 
-fn with_cte(name :: Str, cte_plan :: q.SqlQuery, main :: q.SelectQuery) -> CteQuery {
+fn with_cte[T](name :: Str, cte_plan :: q.SqlQuery, main :: q.SelectQuery[T]) -> CteQuery[T] {
   { cte_name: name, cte_plan: cte_plan, main: main }
 }
 
-fn build_cte(cq :: CteQuery, dialect :: conn.Dialect) -> q.SqlQuery {
+fn build_cte[T](cq :: CteQuery[T], dialect :: conn.Dialect) -> q.SqlQuery {
   let main_sq := q.build_select_json(cq.main, dialect)
   let cte_part := "WITH " + sql_quote(cq.cte_name) + " AS (" + cq.cte_plan.sql + ") "
   { sql: cte_part + main_sq.sql, params: list.concat(cq.cte_plan.params, main_sq.params) }
 }
 
-fn run_cte[R](cq :: CteQuery, db :: conn.ConnDb, decode :: (jv.Json) -> Result[R, se.Errors]) -> [sql] Result[List[R], dbe.DbErr] {
+# Run a CTE query; decode each result row with a caller-supplied JSON
+# decoder. The CTE result type R may differ from the underlying repo's
+# row type T (e.g. when the CTE projects different columns).
+fn run_cte[T, R](cq :: CteQuery[T], db :: conn.ConnDb, decode :: (jv.Json) -> Result[R, se.Errors]) -> [sql] Result[List[R], dbe.DbErr] {
   let sq := q.for_dialect(build_cte(cq, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], SqlError] := sql.query(db.handle, sq.sql, sq.params)
   match raw {
@@ -51,4 +54,3 @@ fn run_cte[R](cq :: CteQuery, db :: conn.ConnDb, decode :: (jv.Json) -> Result[R
 fn sql_quote(name :: Str) -> Str {
   "\"" + name + "\""
 }
-
