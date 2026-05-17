@@ -62,6 +62,31 @@ fn diff(old :: s.ModelSchema, new :: s.ModelSchema) -> List[DdlChange] {
   list.concat(list.concat(added, dropped), nullability)
 }
 
+# Emit a CREATE TABLE IF NOT EXISTS statement for a ModelSchema.
+# Table name defaults to `schema.title`; use `to_create_table_named`
+# if the table identifier differs from the schema title.
+fn to_create_table(schema :: s.ModelSchema, dialect :: conn.Dialect) -> Str {
+  to_create_table_named(schema.title, schema, dialect)
+}
+
+fn to_create_table_named(table :: Str, schema :: s.ModelSchema, dialect :: conn.Dialect) -> Str {
+  let qt := sql_quote(table)
+  let col_defs := list.map(schema.fields, fn (f :: s.Field) -> Str {
+    let null_part := if f.required {
+      " NOT NULL"
+    } else {
+      ""
+    }
+    "  " + sql_quote(f.name) + " " + field_base_type(f.kind, dialect) + null_part
+  })
+  "CREATE TABLE IF NOT EXISTS " + qt + " (\n" + str.join(col_defs, ",\n") + "\n)"
+}
+
+# Emit a DROP TABLE IF EXISTS statement for a ModelSchema.
+fn to_drop_table(schema :: s.ModelSchema, dialect :: conn.Dialect) -> Str {
+  "DROP TABLE IF EXISTS " + sql_quote(schema.title)
+}
+
 # Emit ALTER TABLE / CREATE INDEX SQL for a list of DdlChanges.
 fn to_alter_table(table :: Str, changes :: List[DdlChange], dialect :: conn.Dialect) -> Str {
   str.join(list.map(changes, fn (ch :: DdlChange) -> Str {
@@ -146,9 +171,9 @@ fn run_pending(db :: conn.ConnDb, all_sorted :: List[SchemaVersion], pending :: 
       let rest := list.tail(pending)
       let prev_schema := schema_before(all_sorted, sv.version)
       let stmts := match prev_schema {
-        None => [],
+        None => [to_create_table(sv.schema, db.dialect)],
         Some(old_sch) => list.map(diff(old_sch, sv.schema), fn (ch :: DdlChange) -> Str {
-          alter_stmt(sql_quote(sv.schema.title), ch, db.dialect)
+          alter_stmt(sv.schema.title, ch, db.dialect)
         }),
       }
       match exec_stmts(db, stmts) {
@@ -184,9 +209,9 @@ fn rollback_pending(db :: conn.ConnDb, all_sorted :: List[SchemaVersion], to_und
       let rest := list.tail(to_undo)
       let prev_schema := schema_before(all_sorted, sv.version)
       let stmts := match prev_schema {
-        None => [],
+        None => [to_drop_table(sv.schema, db.dialect)],
         Some(old_sch) => list.map(diff(sv.schema, old_sch), fn (ch :: DdlChange) -> Str {
-          alter_stmt(sql_quote(sv.schema.title), ch, db.dialect)
+          alter_stmt(sv.schema.title, ch, db.dialect)
         }),
       }
       match exec_stmts(db, stmts) {
@@ -313,9 +338,8 @@ fn field_base_type(kind :: s.FieldKind, dialect :: conn.Dialect) -> Str {
       DbSqlite => "TEXT",
     },
     KObject(_) => match dialect {
-      DbPostgres => "BIGINT",
-      DbSqlite => "INTEGER",
+      DbPostgres => "JSONB",
+      DbSqlite => "TEXT",
     },
   }
 }
-
