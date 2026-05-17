@@ -4,4 +4,11 @@ version = "0.1.0"
 lex     = "0.9.5"
 
 [dependencies]
-lex-schema = { git = "https://github.com/alpibrusl/lex-schema" }
+# Path-based so downstream packages (lex-ocpi, lex-web) that resolve
+# lex-schema via a sibling path end up sharing the *same* content-
+# addressed copy. With `git = "..."` here, lex-orm pulled an
+# independent clone and lex-ocpi pulled its sibling — same logical
+# type ended up with two different stage hashes
+# (`schema_4943a216.ModelSchema` vs `schema_9e2e5d00.ModelSchema`),
+# breaking every cross-package call site.
+lex-schema = { path = "../lex-schema" }
