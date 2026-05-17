@@ -17,6 +17,8 @@ import "../src/query"      as q
 import "../src/predicate"  as p
 import "../src/error"      as dbe
 
+type Post = { id :: Int, title :: Str, body :: Str }
+
 fn post_schema() -> s.ModelSchema {
   {
     title: "post",
@@ -29,7 +31,18 @@ fn post_schema() -> s.ModelSchema {
   }
 }
 
-fn decode_post(j :: jv.Json) -> Result[jv.Json, se.Errors] { Ok(j) }
+fn decode_post(j :: jv.Json) -> Result[Post, se.Errors] {
+  match jv.j_int("", j, "id", []) {
+    Err(e) => Err(e),
+    Ok(id) => match jv.j_str("", j, "title", []) {
+      Err(e) => Err(e),
+      Ok(title) => match jv.j_str("", j, "body", []) {
+        Err(e) => Err(e),
+        Ok(body) => Ok({ id: id, title: title, body: body }),
+      },
+    },
+  }
+}
 
 fn versions() -> List[m.SchemaVersion] {
   [{ version: 1, schema: post_schema() }]
@@ -41,13 +54,13 @@ fn main() -> [sql, fs_write] Str {
     Ok(db) => {
       let repo := q.for_schema(post_schema(), decode_post)
 
-      # Run migrations (creates the `post` table)
+      # Run migrations (creates the `post` table from the schema)
       match m.apply(db, 0, versions()) {
         Err(e) => dbe.message(e),
         Ok(_)  =>
 
           # Transaction: insert two posts atomically
-          match q.transaction(db, fn (tx :: conn.Db) -> [sql] Result[Int, dbe.DbErr] {
+          match q.transaction(db, fn (tx :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
             let p1 := JObj([
               ("id",    JInt(1)),
               ("title", JStr("Hello, lex-orm!")),
