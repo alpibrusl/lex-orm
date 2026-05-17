@@ -52,14 +52,12 @@ fn main() -> [sql, fs_write] Str {
   match conn.connect_sqlite(":memory:") {
     Err(e) => dbe.message(e),
     Ok(db) => {
-      let repo := q.for_schema(post_schema(), decode_post)
+      let repo := q.for_schema(post_schema())
 
-      # Run migrations (creates the `post` table from the schema)
       match m.apply(db, 0, versions()) {
         Err(e) => dbe.message(e),
         Ok(_)  =>
 
-          # Transaction: insert two posts atomically
           match q.transaction(db, fn (tx :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
             let p1 := JObj([
               ("id",    JInt(1)),
@@ -71,9 +69,9 @@ fn main() -> [sql, fs_write] Str {
               ("title", JStr("Paginated queries")),
               ("body",  JStr("Use q.paginate(sel, page, per_page) for cursor-free paging.")),
             ])
-            match q.run_insert(q.insert(repo, p1), tx) {
+            match q.run_insert(q.insert(repo, p1), decode_post, tx) {
               Err(e) => Err(e),
-              Ok(_)  => match q.run_insert(q.insert(repo, p2), tx) {
+              Ok(_)  => match q.run_insert(q.insert(repo, p2), decode_post, tx) {
                 Err(e) => Err(e),
                 Ok(_)  => Ok(2),
               },
@@ -82,7 +80,6 @@ fn main() -> [sql, fs_write] Str {
             Err(e) => dbe.message(e),
             Ok(_)  =>
 
-              # SELECT with WHERE + ORDER BY + LIMIT
               let sel :=
                 q.limit(
                   q.order_by(
@@ -91,11 +88,10 @@ fn main() -> [sql, fs_write] Str {
                   ),
                   10
                 )
-              match q.run_select(sel, db) {
+              match q.run_select(sel, decode_post, db) {
                 Err(e)   => dbe.message(e),
                 Ok(rows) =>
 
-                  # COUNT
                   match q.run_count(q.select(repo), db) {
                     Err(e) => dbe.message(e),
                     Ok(n)  => {

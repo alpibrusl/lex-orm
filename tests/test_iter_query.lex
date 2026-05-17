@@ -1,10 +1,3 @@
-# tests/test_iter_query.lex — run_select_iter pure plan tests
-#
-# run_select_iter carries [sql] so we can't call it directly without a
-# database. These tests verify the plan-building path (pure) to ensure
-# the builder produces the expected SQL, matching the existing
-# test_query.lex pattern.
-
 import "std.str" as str
 
 import "std.list" as list
@@ -19,7 +12,6 @@ import "lex-schema/error" as se
 
 import "lex-schema/schema" as s
 
-# ---- Minimal repo fixture ----------------------------------------
 type Item = { id :: Int, name :: Str }
 
 fn item_schema() -> s.ModelSchema {
@@ -36,11 +28,10 @@ fn decode_item(j :: jv.Json) -> Result[Item, se.Errors] {
   }
 }
 
-fn item_repo() -> q.Repo[Item] {
-  q.for_schema(item_schema(), decode_item)
+fn item_repo() -> q.RepoSchema {
+  q.for_schema(item_schema())
 }
 
-# ---- Plan-building tests (pure) ----------------------------------
 fn check(name :: Str, cond :: Bool) -> Result[Unit, Str] {
   if cond {
     Ok(())
@@ -81,7 +72,6 @@ fn suite() -> List[Result[Unit, Str]] {
   [test_select_iter_plan_sql(), test_select_iter_plan_with_where(), test_select_iter_plan_with_limit(), test_select_iter_plan_params_empty(), test_select_iter_plan_params_with_where()]
 }
 
-# ---- Runner -------------------------------------------------------
 fn run_all() -> Int {
   let failed := list.fold(suite(), 0, fn (acc :: Int, v :: Result[Unit, Str]) -> Int {
     match v {
