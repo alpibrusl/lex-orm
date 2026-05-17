@@ -36,8 +36,8 @@ fn decode_item(j :: jv.Json) -> Result[Item, se.Errors] {
   }
 }
 
-fn item_repo() -> q.RepoSchema {
-  q.for_schema(item_schema())
+fn item_repo() -> q.Repo[Item] {
+  q.for_schema(item_schema(), decode_item)
 }
 
 # ---- Plan-building tests (pure) ----------------------------------
@@ -95,4 +95,3 @@ fn run_all() -> Int {
     0
   }
 }
-
