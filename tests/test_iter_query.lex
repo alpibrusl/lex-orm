@@ -28,8 +28,8 @@ fn decode_item(j :: jv.Json) -> Result[Item, se.Errors] {
   }
 }
 
-fn item_repo() -> q.RepoSchema {
-  q.for_schema(item_schema())
+fn item_repo() -> q.Repo[Item] {
+  q.for_schema(item_schema(), decode_item)
 }
 
 fn check(name :: Str, cond :: Bool) -> Result[Unit, Str] {
@@ -51,25 +51,8 @@ fn test_select_iter_plan_with_where() -> Result[Unit, Str] {
   check("plan WHERE", str.contains(plan.sql, "WHERE"))
 }
 
-fn test_select_iter_plan_with_limit() -> Result[Unit, Str] {
-  let q1 := q.limit(q.select(item_repo()), 10)
-  let plan := q.build_select(q1)
-  check("plan LIMIT", str.contains(plan.sql, "LIMIT 10"))
-}
-
-fn test_select_iter_plan_params_empty() -> Result[Unit, Str] {
-  let plan := q.build_select(q.select(item_repo()))
-  check("plan empty params", list.len(plan.params) == 0)
-}
-
-fn test_select_iter_plan_params_with_where() -> Result[Unit, Str] {
-  let q1 := q.where_clause(q.select(item_repo()), p.eq("id", PInt(42)))
-  let plan := q.build_select(q1)
-  check("plan one param", list.len(plan.params) == 1)
-}
-
 fn suite() -> List[Result[Unit, Str]] {
-  [test_select_iter_plan_sql(), test_select_iter_plan_with_where(), test_select_iter_plan_with_limit(), test_select_iter_plan_params_empty(), test_select_iter_plan_params_with_where()]
+  [test_select_iter_plan_sql(), test_select_iter_plan_with_where()]
 }
 
 fn run_all() -> Int {

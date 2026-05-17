@@ -20,33 +20,33 @@ import "./error" as dbe
 
 type AggExpr = AggCount | AggCountCol(Str) | AggSum(Str) | AggAvg(Str) | AggMin(Str) | AggMax(Str)
 
-type AggQuery = { repo :: q.RepoSchema, aggs :: List[(Str, AggExpr)], filters :: List[p.Predicate], group_by :: List[Str], having :: List[p.Predicate], ordering :: List[(Str, q.Order)], limit_n :: Option[Int] }
+type AggQuery[T] = { repo :: q.Repo[T], aggs :: List[(Str, AggExpr)], filters :: List[p.Predicate], group_by :: List[Str], having :: List[p.Predicate], ordering :: List[(Str, q.Order)], limit_n :: Option[Int] }
 
-fn agg_select(repo :: q.RepoSchema) -> AggQuery {
+fn agg_select[T](repo :: q.Repo[T]) -> AggQuery[T] {
   { repo: repo, aggs: [], filters: [], group_by: [], having: [], ordering: [], limit_n: None }
 }
 
-fn add_agg(aq :: AggQuery, alias :: Str, expr :: AggExpr) -> AggQuery {
+fn add_agg[T](aq :: AggQuery[T], alias :: Str, expr :: AggExpr) -> AggQuery[T] {
   { repo: aq.repo, aggs: list.concat(aq.aggs, [(alias, expr)]), filters: aq.filters, group_by: aq.group_by, having: aq.having, ordering: aq.ordering, limit_n: aq.limit_n }
 }
 
-fn group_by_col(aq :: AggQuery, col :: Str) -> AggQuery {
+fn group_by_col[T](aq :: AggQuery[T], col :: Str) -> AggQuery[T] {
   { repo: aq.repo, aggs: aq.aggs, filters: aq.filters, group_by: list.concat(aq.group_by, [col]), having: aq.having, ordering: aq.ordering, limit_n: aq.limit_n }
 }
 
-fn having_clause(aq :: AggQuery, pred :: p.Predicate) -> AggQuery {
+fn having_clause[T](aq :: AggQuery[T], pred :: p.Predicate) -> AggQuery[T] {
   { repo: aq.repo, aggs: aq.aggs, filters: aq.filters, group_by: aq.group_by, having: list.concat(aq.having, [pred]), ordering: aq.ordering, limit_n: aq.limit_n }
 }
 
-fn where_agg(aq :: AggQuery, pred :: p.Predicate) -> AggQuery {
+fn where_agg[T](aq :: AggQuery[T], pred :: p.Predicate) -> AggQuery[T] {
   { repo: aq.repo, aggs: aq.aggs, filters: list.concat(aq.filters, [pred]), group_by: aq.group_by, having: aq.having, ordering: aq.ordering, limit_n: aq.limit_n }
 }
 
-fn order_agg(aq :: AggQuery, col :: Str, dir :: q.Order) -> AggQuery {
+fn order_agg[T](aq :: AggQuery[T], col :: Str, dir :: q.Order) -> AggQuery[T] {
   { repo: aq.repo, aggs: aq.aggs, filters: aq.filters, group_by: aq.group_by, having: aq.having, ordering: list.concat(aq.ordering, [(col, dir)]), limit_n: aq.limit_n }
 }
 
-fn limit_agg(aq :: AggQuery, n :: Int) -> AggQuery {
+fn limit_agg[T](aq :: AggQuery[T], n :: Int) -> AggQuery[T] {
   { repo: aq.repo, aggs: aq.aggs, filters: aq.filters, group_by: aq.group_by, having: aq.having, ordering: aq.ordering, limit_n: Some(n) }
 }
 
@@ -61,7 +61,7 @@ fn render_agg_expr(expr :: AggExpr) -> Str {
   }
 }
 
-fn build_agg(aq :: AggQuery) -> q.SqlQuery {
+fn build_agg[T](aq :: AggQuery[T]) -> q.SqlQuery {
   let tname := sql_quote(aq.repo.table)
   let group_cols := list.map(aq.group_by, sql_quote)
   let agg_cols := list.map(aq.aggs, fn (pair :: (Str, AggExpr)) -> Str {
@@ -133,7 +133,7 @@ fn build_agg(aq :: AggQuery) -> q.SqlQuery {
   { sql: final_sql, params: list.concat(where_params, having_params) }
 }
 
-fn build_agg_json(aq :: AggQuery, dialect :: conn.Dialect) -> q.SqlQuery {
+fn build_agg_json[T](aq :: AggQuery[T], dialect :: conn.Dialect) -> q.SqlQuery {
   let inner := build_agg(aq)
   let group_als := aq.group_by
   let agg_als := list.map(aq.aggs, fn (pair :: (Str, AggExpr)) -> Str {
@@ -153,7 +153,7 @@ fn build_agg_json(aq :: AggQuery, dialect :: conn.Dialect) -> q.SqlQuery {
   { sql: wrap_sql, params: inner.params }
 }
 
-fn run_agg[R](aq :: AggQuery, db :: conn.ConnDb, decode :: (jv.Json) -> Result[R, se.Errors]) -> [sql] Result[List[R], dbe.DbErr] {
+fn run_agg[T, R](aq :: AggQuery[T], db :: conn.ConnDb, decode :: (jv.Json) -> Result[R, se.Errors]) -> [sql] Result[List[R], dbe.DbErr] {
   let sq := q.for_dialect(build_agg_json(aq, db.dialect), db.dialect)
   let raw :: Result[List[{ _j :: Str }], SqlError] := sql.query(db.handle, sq.sql, sq.params)
   match raw {

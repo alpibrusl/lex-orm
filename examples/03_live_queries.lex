@@ -1,5 +1,4 @@
 # Example 03: real SQL queries against an in-memory SQLite database.
-# Demonstrates open -> migrate -> insert -> select -> count -> transaction -> close.
 # Run with: lex run --allow-sql --allow-fs-write examples/03_live_queries.lex
 
 import "std.str"  as str
@@ -52,55 +51,22 @@ fn main() -> [sql, fs_write] Str {
   match conn.connect_sqlite(":memory:") {
     Err(e) => dbe.message(e),
     Ok(db) => {
-      let repo := q.for_schema(post_schema())
-
+      let repo := q.for_schema(post_schema(), decode_post)
       match m.apply(db, 0, versions()) {
         Err(e) => dbe.message(e),
-        Ok(_)  =>
-
-          match q.transaction(db, fn (tx :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
-            let p1 := JObj([
-              ("id",    JInt(1)),
-              ("title", JStr("Hello, lex-orm!")),
-              ("body",  JStr("First post via real std.sql execution.")),
-            ])
-            let p2 := JObj([
-              ("id",    JInt(2)),
-              ("title", JStr("Paginated queries")),
-              ("body",  JStr("Use q.paginate(sel, page, per_page) for cursor-free paging.")),
-            ])
-            match q.run_insert(q.insert(repo, p1), decode_post, tx) {
-              Err(e) => Err(e),
-              Ok(_)  => match q.run_insert(q.insert(repo, p2), decode_post, tx) {
-                Err(e) => Err(e),
-                Ok(_)  => Ok(2),
-              },
-            }
-          }) {
+        Ok(_)  => {
+          let p1 := JObj([("id", JInt(1)), ("title", JStr("Hello")), ("body", JStr("World"))])
+          match q.run_insert(q.insert(repo, p1), db) {
             Err(e) => dbe.message(e),
-            Ok(_)  =>
-
-              let sel :=
-                q.limit(
-                  q.order_by(
-                    q.where_clause(q.select(repo), p.gt("id", PInt(0))),
-                    "id", Desc
-                  ),
-                  10
-                )
-              match q.run_select(sel, decode_post, db) {
-                Err(e)   => dbe.message(e),
-                Ok(rows) =>
-
-                  match q.run_count(q.select(repo), db) {
-                    Err(e) => dbe.message(e),
-                    Ok(n)  => {
-                      let _ := conn.close(db)
-                      "found " + int.to_str(list.len(rows)) + " rows, total count = " + int.to_str(n)
-                    },
-                  }
-              }
+            Ok(_) => match q.run_count(q.select(repo), db) {
+              Err(e) => dbe.message(e),
+              Ok(n) => {
+                let _ := conn.close(db)
+                "total = " + int.to_str(n)
+              },
+            },
           }
+        },
       }
     },
   }
