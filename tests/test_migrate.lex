@@ -95,8 +95,50 @@ fn plan_first_pending_version() -> Result[Unit, Str] {
   check("first pending = 2", first_v == 2)
 }
 
+# to_create_table emits a CREATE TABLE statement
+fn create_table_starts_with_create() -> Result[Unit, Str] {
+  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  check("CREATE TABLE", str.contains(ddl, "CREATE TABLE IF NOT EXISTS"))
+}
+
+fn create_table_quotes_name() -> Result[Unit, Str] {
+  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  check("quoted name", str.contains(ddl, "\"Post\""))
+}
+
+fn create_table_includes_columns() -> Result[Unit, Str] {
+  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  check("includes id col", str.contains(ddl, "\"id\""))
+}
+
+fn create_table_not_null_for_required() -> Result[Unit, Str] {
+  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  check("NOT NULL", str.contains(ddl, "NOT NULL"))
+}
+
+# JSONB / TEXT for KObject (issue #18)
+fn create_table_object_field_is_jsonb() -> Result[Unit, Str] {
+  let nested := { title: "GeoLocation", description: "", fields: [s.required_str("lat", []), s.required_str("lon", [])] }
+  let outer := { title: "Loc", description: "", fields: [s.required_str("id", []), s.required_object("coordinates", nested)] }
+  let ddl := m.to_create_table(outer, DbPostgres)
+  check("KObject => JSONB", str.contains(ddl, "JSONB"))
+}
+
+fn create_table_object_field_is_text_sqlite() -> Result[Unit, Str] {
+  let nested := { title: "GeoLocation", description: "", fields: [s.required_str("lat", []), s.required_str("lon", [])] }
+  let outer := { title: "Loc", description: "", fields: [s.required_str("id", []), s.required_object("coordinates", nested)] }
+  let ddl := m.to_create_table(outer, DbSqlite)
+  check("KObject => TEXT (sqlite)", str.contains(ddl, "TEXT"))
+}
+
+# DROP TABLE roundtrip
+fn drop_table_emits_drop() -> Result[Unit, Str] {
+  let ddl := m.to_drop_table(schema_v1(), DbPostgres)
+  check("DROP TABLE", str.contains(ddl, "DROP TABLE IF EXISTS"))
+}
+
 fn suite() -> List[Result[Unit, Str]] {
-  [diff_v1_to_v2_adds_two(), diff_v2_to_v1_drops_two(), diff_identical_is_empty(), diff_optional_to_required_sets_not_null(), alter_table_emits_add_column(), alter_table_emits_drop_column(), plan_returns_pending_count(), plan_first_pending_version()]
+  [diff_v1_to_v2_adds_two(), diff_v2_to_v1_drops_two(), diff_identical_is_empty(), diff_optional_to_required_sets_not_null(), alter_table_emits_add_column(), alter_table_emits_drop_column(), plan_returns_pending_count(), plan_first_pending_version(), create_table_starts_with_create(), create_table_quotes_name(), create_table_includes_columns(), create_table_not_null_for_required(), create_table_object_field_is_jsonb(), create_table_object_field_is_text_sqlite(), drop_table_emits_drop()]
 }
 
 fn run_all() -> Int {
@@ -112,4 +154,3 @@ fn run_all() -> Int {
     0
   }
 }
-
