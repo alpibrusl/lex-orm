@@ -10,11 +10,11 @@ import "./connection" as conn
 
 import "./error" as dbe
 
-fn with_version_check(upd :: q.UpdateQuery, version_col :: Str, expected_ver :: Int) -> q.UpdateQuery {
+fn with_version_check[T](upd :: q.UpdateQuery[T], version_col :: Str, expected_ver :: Int) -> q.UpdateQuery[T] {
   q.where_update(q.set_col(upd, version_col, PInt(expected_ver + 1)), p.eq(version_col, PInt(expected_ver)))
 }
 
-fn run_optimistic(upd :: q.UpdateQuery, version_col :: Str, expected_ver :: Int, db :: conn.ConnDb) -> [sql] Result[Unit, dbe.DbErr] {
+fn run_optimistic[T](upd :: q.UpdateQuery[T], version_col :: Str, expected_ver :: Int, db :: conn.ConnDb) -> [sql] Result[Unit, dbe.DbErr] {
   match q.run_update(with_version_check(upd, version_col, expected_ver), db) {
     Err(e) => Err(e),
     Ok(n) => if n == 0 {
