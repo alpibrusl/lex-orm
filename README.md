@@ -283,3 +283,7 @@ lex run examples/04_joins.lex
 - **Record row spreads.** Examples 04 uses the lex 0.9.1 syntax
   `{ ...Post, username :: Str }` to express join-result types
   ([#363](https://github.com/alpibrusl/lex-lang/issues/363)).
+
+---
+
+Built under the principles of [Trust Without Comprehension](https://alpibru.com/manifesto).
