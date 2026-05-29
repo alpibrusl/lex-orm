@@ -69,12 +69,12 @@ fn diff_optional_to_required_sets_not_null() -> Result[Unit, Str] {
 }
 
 fn alter_table_emits_add_column() -> Result[Unit, Str] {
-  let alter := m.to_alter_table("post", [AddColumn(s.required_str("body", []))], DbPostgres)
+  let alter := m.to_alter_table("post", [AddColumn(s.required_str("body", []))], DbPostgres(()))
   check("ADD COLUMN", str.contains(alter, "ADD COLUMN"))
 }
 
 fn alter_table_emits_drop_column() -> Result[Unit, Str] {
-  let alter := m.to_alter_table("post", [DropColumn("old_field")], DbPostgres)
+  let alter := m.to_alter_table("post", [DropColumn("old_field")], DbPostgres(()))
   check("DROP COLUMN", str.contains(alter, "DROP COLUMN"))
 }
 
@@ -97,22 +97,22 @@ fn plan_first_pending_version() -> Result[Unit, Str] {
 
 # to_create_table emits a CREATE TABLE statement
 fn create_table_starts_with_create() -> Result[Unit, Str] {
-  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  let ddl := m.to_create_table(schema_v1(), DbPostgres(()))
   check("CREATE TABLE", str.contains(ddl, "CREATE TABLE IF NOT EXISTS"))
 }
 
 fn create_table_quotes_name() -> Result[Unit, Str] {
-  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  let ddl := m.to_create_table(schema_v1(), DbPostgres(()))
   check("quoted name", str.contains(ddl, "\"Post\""))
 }
 
 fn create_table_includes_columns() -> Result[Unit, Str] {
-  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  let ddl := m.to_create_table(schema_v1(), DbPostgres(()))
   check("includes id col", str.contains(ddl, "\"id\""))
 }
 
 fn create_table_not_null_for_required() -> Result[Unit, Str] {
-  let ddl := m.to_create_table(schema_v1(), DbPostgres)
+  let ddl := m.to_create_table(schema_v1(), DbPostgres(()))
   check("NOT NULL", str.contains(ddl, "NOT NULL"))
 }
 
@@ -120,20 +120,20 @@ fn create_table_not_null_for_required() -> Result[Unit, Str] {
 fn create_table_object_field_is_jsonb() -> Result[Unit, Str] {
   let nested := { title: "GeoLocation", description: "", fields: [s.required_str("lat", []), s.required_str("lon", [])] }
   let outer := { title: "Loc", description: "", fields: [s.required_str("id", []), s.required_object("coordinates", nested)] }
-  let ddl := m.to_create_table(outer, DbPostgres)
+  let ddl := m.to_create_table(outer, DbPostgres(()))
   check("KObject => JSONB", str.contains(ddl, "JSONB"))
 }
 
 fn create_table_object_field_is_text_sqlite() -> Result[Unit, Str] {
   let nested := { title: "GeoLocation", description: "", fields: [s.required_str("lat", []), s.required_str("lon", [])] }
   let outer := { title: "Loc", description: "", fields: [s.required_str("id", []), s.required_object("coordinates", nested)] }
-  let ddl := m.to_create_table(outer, DbSqlite)
+  let ddl := m.to_create_table(outer, DbSqlite(()))
   check("KObject => TEXT (sqlite)", str.contains(ddl, "TEXT"))
 }
 
 # DROP TABLE roundtrip
 fn drop_table_emits_drop() -> Result[Unit, Str] {
-  let ddl := m.to_drop_table(schema_v1(), DbPostgres)
+  let ddl := m.to_drop_table(schema_v1(), DbPostgres(()))
   check("DROP TABLE", str.contains(ddl, "DROP TABLE IF EXISTS"))
 }
 
@@ -154,3 +154,4 @@ fn run_all() -> Int {
     0
   }
 }
+

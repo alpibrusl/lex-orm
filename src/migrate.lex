@@ -105,12 +105,12 @@ fn alter_stmt(table :: Str, ch :: DdlChange, dialect :: conn.Dialect) -> Str {
     DropColumn(name) => "ALTER TABLE " + qt + " DROP COLUMN " + sql_quote(name),
     RenameColumn(r) => "ALTER TABLE " + qt + " RENAME COLUMN " + sql_quote(r.from) + " TO " + sql_quote(r.to),
     SetNullable(name) => match dialect {
-      DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " DROP NOT NULL",
-      DbSqlite => "-- SQLite: rebuild table to drop NOT NULL on " + name,
+      DbPostgres(_) => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " DROP NOT NULL",
+      DbSqlite(_) => "-- SQLite: rebuild table to drop NOT NULL on " + name,
     },
     SetNotNull(name) => match dialect {
-      DbPostgres => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " SET NOT NULL",
-      DbSqlite => "-- SQLite: rebuild table to add NOT NULL on " + name,
+      DbPostgres(_) => "ALTER TABLE " + qt + " ALTER COLUMN " + sql_quote(name) + " SET NOT NULL",
+      DbSqlite(_) => "-- SQLite: rebuild table to add NOT NULL on " + name,
     },
     AddIndex(idx) => {
       let unique_pfx := if idx.unique {
@@ -141,8 +141,8 @@ fn plan_migrations(current_version :: Int, versions :: List[SchemaVersion]) -> L
 # DDL for the migrations tracking table.
 fn migrations_table_ddl(dialect :: conn.Dialect) -> Str {
   match dialect {
-    DbPostgres => "CREATE TABLE IF NOT EXISTS \"lex_schema_migrations\" (\n  version BIGINT PRIMARY KEY,\n  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);",
-    DbSqlite => "CREATE TABLE IF NOT EXISTS \"lex_schema_migrations\" (\n  version INTEGER PRIMARY KEY,\n  applied_at TEXT NOT NULL DEFAULT (datetime('now'))\n);",
+    DbPostgres(_) => "CREATE TABLE IF NOT EXISTS \"lex_schema_migrations\" (\n  version BIGINT PRIMARY KEY,\n  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);",
+    DbSqlite(_) => "CREATE TABLE IF NOT EXISTS \"lex_schema_migrations\" (\n  version INTEGER PRIMARY KEY,\n  applied_at TEXT NOT NULL DEFAULT (datetime('now'))\n);",
   }
 }
 
@@ -322,24 +322,25 @@ fn field_base_type(kind :: s.FieldKind, dialect :: conn.Dialect) -> Str {
   match kind {
     KStr(_) => "TEXT",
     KInt(_) => match dialect {
-      DbPostgres => "BIGINT",
-      DbSqlite => "INTEGER",
+      DbPostgres(_) => "BIGINT",
+      DbSqlite(_) => "INTEGER",
     },
     KFloat(_) => match dialect {
-      DbPostgres => "DOUBLE PRECISION",
-      DbSqlite => "REAL",
+      DbPostgres(_) => "DOUBLE PRECISION",
+      DbSqlite(_) => "REAL",
     },
     KBool => match dialect {
-      DbPostgres => "BOOLEAN",
-      DbSqlite => "INTEGER",
+      DbPostgres(_) => "BOOLEAN",
+      DbSqlite(_) => "INTEGER",
     },
     KArray(_, _) => match dialect {
-      DbPostgres => "JSONB",
-      DbSqlite => "TEXT",
+      DbPostgres(_) => "JSONB",
+      DbSqlite(_) => "TEXT",
     },
     KObject(_) => match dialect {
-      DbPostgres => "JSONB",
-      DbSqlite => "TEXT",
+      DbPostgres(_) => "JSONB",
+      DbSqlite(_) => "TEXT",
     },
   }
 }
+

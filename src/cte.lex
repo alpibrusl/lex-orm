@@ -50,3 +50,4 @@ fn run_cte[T, R](cq :: CteQuery[T], db :: conn.ConnDb, decode :: (jv.Json) -> Re
 fn sql_quote(name :: Str) -> Str {
   "\"" + name + "\""
 }
+

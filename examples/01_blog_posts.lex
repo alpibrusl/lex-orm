@@ -45,7 +45,7 @@ fn main() -> Str {
               p.is_not_null("published_at")
             )
           ),
-          "published_at", Desc
+          "published_at", Desc(())
         ),
         20
       )

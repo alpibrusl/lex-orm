@@ -38,7 +38,7 @@ fn with_table[T](repo :: Repo[T], table :: Str) -> Repo[T] {
   { schema: repo.schema, table: table, decode: repo.decode }
 }
 
-type Order = Asc | Desc
+type Order = Asc(Unit) | Desc(Unit)
 
 type SelectQuery[T] = { repo :: Repo[T], filters :: List[p.Predicate], ordering :: List[(Str, Order)], limit_n :: Option[Int], offset_n :: Option[Int] }
 
@@ -167,8 +167,8 @@ fn build_select[T](q :: SelectQuery[T]) -> SqlQuery {
         (_, d) => d,
       }
       sql_quote(col) + match dir {
-        Asc => " ASC",
-        Desc => " DESC",
+        Asc(_) => " ASC",
+        Desc(_) => " DESC",
       }
     })
     with_where + " ORDER BY " + str.join(order_parts, ", ")
@@ -318,8 +318,8 @@ fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
     list.concat(acc, ["'" + f.name + "'", sql_quote(f.name)])
   })
   let json_fn := match dialect {
-    DbPostgres => "json_build_object",
-    DbSqlite => "json_object",
+    DbPostgres(_) => "json_build_object",
+    DbSqlite(_) => "json_object",
   }
   json_fn + "(" + str.join(pairs, ", ") + ") AS _j"
 }
@@ -343,8 +343,8 @@ fn build_insert_returning_json[T](q :: InsertQuery[T], dialect :: conn.Dialect) 
 # ---- Dialect-aware placeholder numbering --------------------------
 fn for_dialect(q :: SqlQuery, dialect :: conn.Dialect) -> SqlQuery {
   match dialect {
-    DbSqlite => q,
-    DbPostgres => { sql: number_placeholders(q.sql), params: q.params },
+    DbSqlite(_) => q,
+    DbPostgres(_) => { sql: number_placeholders(q.sql), params: q.params },
   }
 }
 
@@ -597,3 +597,4 @@ fn json_to_param(j :: Option[jv.Json]) -> SqlParam {
     },
   }
 }
+

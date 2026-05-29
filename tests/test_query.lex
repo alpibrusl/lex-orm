@@ -91,7 +91,7 @@ fn select_offset_keyword() -> Result[Unit, Str] {
 }
 
 fn select_order_by() -> Result[Unit, Str] {
-  let sel := q.build_select(q.order_by(q.select(post_repo()), "title", Asc))
+  let sel := q.build_select(q.order_by(q.select(post_repo()), "title", Asc(())))
   check("ORDER BY", str.contains(sel.sql, "ORDER BY \"title\" ASC"))
 }
 
@@ -113,7 +113,7 @@ fn delete_no_where() -> Result[Unit, Str] {
 
 fn dialect_postgres_renumbers() -> Result[Unit, Str] {
   let sq := { sql: "UPDATE \"t\" SET \"a\" = ?, \"b\" = ? WHERE \"id\" = ?", params: [PStr("x"), PInt(2), PInt(3)] }
-  let out := q.for_dialect(sq, DbPostgres)
+  let out := q.for_dialect(sq, DbPostgres(()))
   check("postgres $N", out.sql == "UPDATE \"t\" SET \"a\" = $1, \"b\" = $2 WHERE \"id\" = $3")
 }
 
@@ -134,3 +134,4 @@ fn run_all() -> Int {
     0
   }
 }
+

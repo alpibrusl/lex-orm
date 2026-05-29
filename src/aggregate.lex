@@ -18,7 +18,7 @@ import "./connection" as conn
 
 import "./error" as dbe
 
-type AggExpr = AggCount | AggCountCol(Str) | AggSum(Str) | AggAvg(Str) | AggMin(Str) | AggMax(Str)
+type AggExpr = AggCount(Unit) | AggCountCol(Str) | AggSum(Str) | AggAvg(Str) | AggMin(Str) | AggMax(Str)
 
 type AggQuery[T] = { repo :: q.Repo[T], aggs :: List[(Str, AggExpr)], filters :: List[p.Predicate], group_by :: List[Str], having :: List[p.Predicate], ordering :: List[(Str, q.Order)], limit_n :: Option[Int] }
 
@@ -52,7 +52,7 @@ fn limit_agg[T](aq :: AggQuery[T], n :: Int) -> AggQuery[T] {
 
 fn render_agg_expr(expr :: AggExpr) -> Str {
   match expr {
-    AggCount => "COUNT(*)",
+    AggCount(_) => "COUNT(*)",
     AggCountCol(col) => "COUNT(" + sql_quote(col) + ")",
     AggSum(col) => "SUM(" + sql_quote(col) + ")",
     AggAvg(col) => "AVG(" + sql_quote(col) + ")",
@@ -120,8 +120,8 @@ fn build_agg[T](aq :: AggQuery[T]) -> q.SqlQuery {
         (_, d) => d,
       }
       sql_quote(col) + match dir {
-        Asc => " ASC",
-        Desc => " DESC",
+        Asc(_) => " ASC",
+        Desc(_) => " DESC",
       }
     })
     with_having + " ORDER BY " + str.join(parts, ", ")
@@ -146,8 +146,8 @@ fn build_agg_json[T](aq :: AggQuery[T], dialect :: conn.Dialect) -> q.SqlQuery {
     list.concat(acc, ["'" + alias + "'", sql_quote(alias)])
   })
   let json_fn := match dialect {
-    DbPostgres => "json_build_object",
-    DbSqlite => "json_object",
+    DbPostgres(_) => "json_build_object",
+    DbSqlite(_) => "json_object",
   }
   let wrap_sql := "SELECT " + json_fn + "(" + str.join(pairs, ", ") + ") AS _j FROM (" + inner.sql + ") _agg"
   { sql: wrap_sql, params: inner.params }
@@ -179,3 +179,4 @@ fn run_agg[T, R](aq :: AggQuery[T], db :: conn.ConnDb, decode :: (jv.Json) -> Re
 fn sql_quote(name :: Str) -> Str {
   "\"" + name + "\""
 }
+

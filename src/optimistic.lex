@@ -24,3 +24,4 @@ fn run_optimistic[T](upd :: q.UpdateQuery[T], version_col :: Str, expected_ver :
     },
   }
 }
+

@@ -31,3 +31,4 @@ fn run_soft_delete[T](repo :: q.Repo[T], pred :: p.Predicate, timestamp :: Str, 
 fn run_restore[T](repo :: q.Repo[T], pred :: p.Predicate, db :: conn.ConnDb) -> [sql] Result[Int, dbe.DbErr] {
   q.run_update(restore(repo, pred), db)
 }
+

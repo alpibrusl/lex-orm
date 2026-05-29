@@ -57,8 +57,8 @@ type ColumnInfo = { name :: Str, data_type :: Str }
 # List all user-facing table names in the database.
 fn introspect_tables(db :: conn.ConnDb) -> [sql] Result[List[Str], dbe.DbErr] {
   let sql_str := match db.dialect {
-    DbPostgres => "SELECT table_name AS name FROM information_schema.tables " + "WHERE table_schema = 'public' ORDER BY table_name",
-    DbSqlite => "SELECT name FROM sqlite_master WHERE type = 'table' " + "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    DbPostgres(_) => "SELECT table_name AS name FROM information_schema.tables " + "WHERE table_schema = 'public' ORDER BY table_name",
+    DbSqlite(_) => "SELECT name FROM sqlite_master WHERE type = 'table' " + "AND name NOT LIKE 'sqlite_%' ORDER BY name",
   }
   let raw :: Result[List[{ name :: Str }], SqlError] := sql.query(db.handle, sql_str, [])
   match raw {
@@ -76,8 +76,8 @@ fn introspect_tables(db :: conn.ConnDb) -> [sql] Result[List[Str], dbe.DbErr] {
 fn introspect_columns(db :: conn.ConnDb, table :: Str) -> [sql] Result[List[ColumnInfo], dbe.DbErr] {
   let param := [PStr(table)]
   let raw :: Result[List[{ name :: Str, data_type :: Str }], SqlError] := match db.dialect {
-    DbPostgres => sql.query(db.handle, "SELECT column_name AS name, data_type " + "FROM information_schema.columns " + "WHERE table_schema = 'public' AND table_name = $1 " + "ORDER BY ordinal_position", param),
-    DbSqlite => sql.query(db.handle, "SELECT name, type AS data_type FROM pragma_table_info(?) ORDER BY cid", param),
+    DbPostgres(_) => sql.query(db.handle, "SELECT column_name AS name, data_type " + "FROM information_schema.columns " + "WHERE table_schema = 'public' AND table_name = $1 " + "ORDER BY ordinal_position", param),
+    DbSqlite(_) => sql.query(db.handle, "SELECT name, type AS data_type FROM pragma_table_info(?) ORDER BY cid", param),
   }
   match raw {
     Err(e) => Err(dbe.sql_error(match e.code {
