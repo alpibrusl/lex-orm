@@ -1,5 +1,9 @@
 # lex-orm
 
+[![CI](https://github.com/alpibrusl/lex-orm/actions/workflows/ci.yml/badge.svg)](https://github.com/alpibrusl/lex-orm/actions/workflows/ci.yml)
+
+**Part of the [Lex](https://lexlang.org) project** — Library · [Manifesto](https://lexlang.org/manifesto) · [All packages](https://lexlang.org)
+
 A typed query builder, migration runner, and **live `std.sql` driver** for
 [lex-lang](https://github.com/alpibrusl/lex-lang), built on top of
 [lex-schema](https://github.com/alpibrusl/lex-schema).
