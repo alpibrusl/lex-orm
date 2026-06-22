@@ -11,4 +11,4 @@ lex     = "0.9.7"
 # type ended up with two different stage hashes
 # (`schema_4943a216.ModelSchema` vs `schema_9e2e5d00.ModelSchema`),
 # breaking every cross-package call site.
-lex-schema = { path = "../lex-schema" }
+lex-schema = { git = "https://github.com/alpibrusl/lex-schema" }
