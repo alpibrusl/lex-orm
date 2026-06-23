@@ -290,4 +290,4 @@ lex run examples/04_joins.lex
 
 ---
 
-Built under the principles of [Trust Without Comprehension](https://alpibru.com/manifesto).
+Built under the principles of [Trust Without Comprehension](https://lexlang.org/manifesto).
