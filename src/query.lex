@@ -1,5 +1,7 @@
 import "std.str" as str
 
+import "lex-schema/constraints" as cs
+
 import "std.list" as list
 
 import "std.int" as int
@@ -202,14 +204,34 @@ fn build_count[T](q :: SelectQuery[T]) -> SqlQuery {
   { sql: final_sql, params: where_params }
 }
 
+# Is this column a uuid? The schema already says so when the field is declared
+# with the StrUuid check — no second source of truth.
+fn is_uuid_field(f :: s.Field) -> Bool {
+  match f.kind {
+    KStr(checks) => not list.is_empty(list.filter(checks, fn (c :: cs.StrCheck) -> Bool {
+      match c {
+        StrUuid => true,
+        _ => false,
+      }
+    })),
+    _ => false,
+  }
+}
+
 fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
   let fields := q.repo.schema.fields
   let col_names := list.map(fields, fn (f :: s.Field) -> Str {
     sql_quote(f.name)
   })
-  let placeholders := list.map(fields, fn (_f :: s.Field) -> Str {
-    "?"
+  # a field declared StrUuid gets the marker: the repo layer knows the column
+  # is a uuid, so callers don't have to remember the double cast (#30).
+  let placeholders := list.map(fields, fn (f :: s.Field) -> Str {
+    if is_uuid_field(f) {
+      "?::uuid"
+    } else {
+      "?"
+    }
   })
   let params := list.map(fields, fn (f :: s.Field) -> SqlParam {
     json_to_param(jv.get_field(q.value, f.name))
@@ -343,10 +365,29 @@ fn build_insert_returning_json[T](q :: InsertQuery[T], dialect :: conn.Dialect) 
 }
 
 # ---- Dialect-aware placeholder numbering --------------------------
-fn for_dialect(q :: SqlQuery, dialect :: conn.Dialect) -> SqlQuery {
+# The `?::uuid` MARKER (#30). Postgres will not bind a lex Str param to a
+# `uuid` column: the driver serializes String, the column wants UUID, and the
+# obvious `$1::uuid` does NOT help — PG infers the PARAMETER type through the
+# cast, so it still fails. The one form that works pins the param to text and
+# casts server-side: `$1::text::uuid`.
+#
+# Builders emit the portable marker `?::uuid`; this function — already the
+# single place SQL text is rewritten per dialect — expands it for PG and
+# strips it for SQLite (which has no `::` cast syntax and no uuid type).
+# Order matters: expand BEFORE numbering, so the `?` inside the expansion
+# gets its own $n.
+fn expand_uuid_markers(sql_str :: Str, dialect :: conn.Dialect) -> Str {
   match dialect {
-    DbSqlite(_) => q,
-    DbPostgres(_) => { sql: number_placeholders(q.sql), params: q.params },
+    DbSqlite(_) => str.replace(sql_str, "?::uuid", "?"),
+    DbPostgres(_) => str.replace(sql_str, "?::uuid", "?::text::uuid"),
+  }
+}
+
+fn for_dialect(q :: SqlQuery, dialect :: conn.Dialect) -> SqlQuery {
+  let expanded := expand_uuid_markers(q.sql, dialect)
+  match dialect {
+    DbSqlite(_) => { sql: expanded, params: q.params },
+    DbPostgres(_) => { sql: number_placeholders(expanded), params: q.params },
   }
 }
 

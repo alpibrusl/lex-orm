@@ -291,3 +291,20 @@ lex run examples/04_joins.lex
 ---
 
 Built under the principles of [Trust Without Comprehension](https://lexlang.org/manifesto).
+
+
+## uuid columns on Postgres
+
+Postgres will not bind a lex `PStr` to a `uuid` column, and `$1::uuid` does not
+help — PG infers the *parameter* type through the cast, so serialization still
+fails. The only working form pins the param to text and casts server-side:
+`$1::text::uuid`.
+
+You don't have to remember that:
+
+- declare the field with the `StrUuid` check and `build_insert` marks it for you
+- use `predicate.eq_uuid(col, v)` / `neq_uuid` in a WHERE clause
+- or emit the portable marker `?::uuid` in raw SQL
+
+`query.for_dialect` expands the marker to `?::text::uuid` on Postgres and strips
+it on SQLite (which has neither `::` casts nor a uuid type).

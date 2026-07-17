@@ -7,6 +7,18 @@ import "std.int" as int
 # Predicates use SqlParam directly — no separate Param type needed.
 type Predicate = PEq((Str, SqlParam)) | PNeq((Str, SqlParam)) | PGt((Str, SqlParam)) | PGte((Str, SqlParam)) | PLt((Str, SqlParam)) | PLte((Str, SqlParam)) | PIn((Str, List[SqlParam])) | PIsNull(Str) | PIsNotNull(Str) | PLike((Str, Str)) | PILike((Str, Str)) | PBetween((Str, SqlParam, SqlParam)) | PRaw((Str, List[SqlParam])) | PAnd((Predicate, Predicate)) | POr((Predicate, Predicate)) | PNot(Predicate)
 
+# Compare against a uuid COLUMN (#30). Postgres needs the param pinned to text
+# and cast server-side; the `?::uuid` marker lets query.for_dialect do that per
+# dialect (expanded on PG, stripped on SQLite) without every caller memorising
+# `::text::uuid`.
+fn eq_uuid(col :: Str, v :: SqlParam) -> Predicate {
+  PRaw(sql_quote(col) + " = ?::uuid", [v])
+}
+
+fn neq_uuid(col :: Str, v :: SqlParam) -> Predicate {
+  PRaw(sql_quote(col) + " != ?::uuid", [v])
+}
+
 fn eq(col :: Str, v :: SqlParam) -> Predicate {
   PEq(col, v)
 }
