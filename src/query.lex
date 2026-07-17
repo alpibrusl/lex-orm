@@ -218,14 +218,15 @@ fn is_uuid_field(f :: s.Field) -> Bool {
   }
 }
 
+# A field declared StrUuid gets the `?::uuid` marker in its placeholder: the repo
+# layer knows the column is a uuid, so callers don't have to remember the double
+# cast (#30).
 fn build_insert[T](q :: InsertQuery[T]) -> SqlQuery {
   let tname := sql_quote(q.repo.table)
   let fields := q.repo.schema.fields
   let col_names := list.map(fields, fn (f :: s.Field) -> Str {
     sql_quote(f.name)
   })
-  # a field declared StrUuid gets the marker: the repo layer knows the column
-  # is a uuid, so callers don't have to remember the double cast (#30).
   let placeholders := list.map(fields, fn (f :: s.Field) -> Str {
     if is_uuid_field(f) {
       "?::uuid"
@@ -335,13 +336,13 @@ fn build_bulk_insert[T](q :: BulkInsertQuery[T]) -> SqlQuery {
 }
 
 # ---- Row-to-JSON bridge -------------------------------------------
+# Postgres returns json_build_object as a `json`-typed column, which the driver
+# cannot deserialize into the Str the decode layer expects — so this casts to TEXT
+# (SQLite's json_object already yields TEXT).
 fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
   let pairs := list.fold(fields, [], fn (acc :: List[Str], f :: s.Field) -> List[Str] {
     list.concat(acc, ["'" + f.name + "'", sql_quote(f.name)])
   })
-  # Postgres returns json_build_object as a `json`-typed column, which the
-  # driver cannot deserialize into the Str the decode layer expects — cast to
-  # TEXT (SQLite's json_object already yields TEXT).
   match dialect {
     DbPostgres(_) => "json_build_object(" + str.join(pairs, ", ") + ")::TEXT AS _j",
     DbSqlite(_) => "json_object(" + str.join(pairs, ", ") + ") AS _j",

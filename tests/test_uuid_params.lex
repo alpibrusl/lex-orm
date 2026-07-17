@@ -70,3 +70,4 @@ fn run_all() -> [io, sql, fs_read, fs_write, time, crypto, random, net, concurre
     ()
   }
 }
+
