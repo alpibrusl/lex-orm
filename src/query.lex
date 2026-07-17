@@ -317,11 +317,13 @@ fn json_agg_expr(fields :: List[s.Field], dialect :: conn.Dialect) -> Str {
   let pairs := list.fold(fields, [], fn (acc :: List[Str], f :: s.Field) -> List[Str] {
     list.concat(acc, ["'" + f.name + "'", sql_quote(f.name)])
   })
-  let json_fn := match dialect {
-    DbPostgres(_) => "json_build_object",
-    DbSqlite(_) => "json_object",
+  # Postgres returns json_build_object as a `json`-typed column, which the
+  # driver cannot deserialize into the Str the decode layer expects — cast to
+  # TEXT (SQLite's json_object already yields TEXT).
+  match dialect {
+    DbPostgres(_) => "json_build_object(" + str.join(pairs, ", ") + ")::TEXT AS _j",
+    DbSqlite(_) => "json_object(" + str.join(pairs, ", ") + ") AS _j",
   }
-  json_fn + "(" + str.join(pairs, ", ") + ") AS _j"
 }
 
 fn build_select_json[T](q :: SelectQuery[T], dialect :: conn.Dialect) -> SqlQuery {
