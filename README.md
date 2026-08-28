@@ -308,3 +308,9 @@ You don't have to remember that:
 
 `query.for_dialect` expands the marker to `?::text::uuid` on Postgres and strips
 it on SQLite (which has neither `::` casts nor a uuid type).
+
+## License
+
+Copyright (c) 2026 lex-orm contributors.
+
+Licensed under the [EUPL-1.2](LICENSE) — the European Union Public Licence, as used across the `lex-*` ecosystem.
