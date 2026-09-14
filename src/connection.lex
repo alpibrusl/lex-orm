@@ -126,7 +126,37 @@ fn connect_sqlite(path :: Str) -> [sql, fs_write] Result[ConnDb, e.DbErr] {
   }
 }
 
+# Fold the WAL back into the database file, so the database is ONE file again.
+#
+# WAL is what makes concurrent access work (see open), and the price is that
+# recent commits live in a `-wal` sidecar until something checkpoints. Anyone
+# who hands a database over as a single file -- a backup, an export, an
+# auditor receiving a sprint to verify independently -- gets a file that is
+# missing whatever had not been folded back yet.
+#
+# Found the moment WAL landed: lex-loom's pilot-verification demo does exactly
+# that handover, `cp company.db received.db`, and the received copy had no
+# `artifacts` table at all.
+#
+# TRUNCATE rather than PASSIVE: it blocks until the whole WAL is folded in and
+# then empties it, which is the guarantee a caller about to copy the file
+# needs. Best effort like the open pragmas -- the result is discarded, and a
+# database that cannot checkpoint is still a usable database.
+fn checkpoint(db :: ConnDb) -> [sql] Unit {
+  match db.dialect {
+    DbPostgres(_) => (),
+    DbSqlite(_) => {
+      let __ck := sql.query(db.handle, "PRAGMA wal_checkpoint(TRUNCATE)", [])
+      ()
+    },
+  }
+}
+
+# SQLite checkpoints when the LAST connection closes cleanly, which is a
+# promise about a clean close rather than about this call. Doing it explicitly
+# means a closed database is a complete one whatever else is still open.
 fn close(db :: ConnDb) -> [sql] Unit {
+  let __ck := checkpoint(db)
   sql.close(db.handle)
 }
 
